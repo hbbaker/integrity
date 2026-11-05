@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cable Bots</title>
+<style>
+  /* Borderlands-style comic HUD: heavy black ink outlines, hard offset shadows,
+     condensed italic lettering, yellow/orange/red accents, halftone dots. */
+  :root {
+    --ink: #000;
+    --yellow: #ffd800;
+    --orange: #ff7a1a;
+    --red: #e3242b;
+    --paper: #f4ecd2;
+    --font: "Impact", "Haettenschweiler", "Arial Narrow Bold", "Franklin Gothic Heavy", sans-serif;
+    --dots: radial-gradient(rgba(0, 0, 0, .28) 1.2px, transparent 1.6px) 0 0 / 7px 7px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #6f8fb0; font-family: var(--font); font-weight: 400; font-style: italic; letter-spacing: 1px; text-transform: uppercase; user-select: none; }
+  canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; }
+
+  .panel {
+    background: var(--dots), linear-gradient(#f7f0d9, #e3d8b4);
+    border: 4px solid var(--ink);
+    border-radius: 4px;
+    box-shadow: 5px 5px 0 var(--ink);
+    color: var(--ink);
+    transform: skewX(-6deg);
+  }
+  .panel > * { transform: skewX(6deg); } /* un-skew contents so only the frame leans */
+
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+
+  /* ---------- health (bottom left) ---------- */
+  #health-panel { position: absolute; left: 28px; bottom: 30px; width: 300px; padding: 8px 14px 12px; }
+  #health-panel .label { font-size: 16px; margin-bottom: 3px; color: var(--red); -webkit-text-stroke: 0; }
+  #health-bar { position: relative; height: 32px; border: 4px solid var(--ink); background: #2a2a2a; overflow: hidden; }
+  #health-fill { position: absolute; inset: 0; width: 100%; background: var(--dots), linear-gradient(#ff5a5f, var(--red)); transition: width .12s ease-out; }
+  /* black segment ticks every 20% */
+  #health-bar::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(20% - 2px), var(--ink) calc(20% - 2px) 20%); }
+  #health-text { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #fff; -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; }
+  #health-panel.hit { animation: hp-hit .45s ease-out; }
+  #health-panel.low #health-fill { animation: hp-pulse .5s ease-in-out infinite alternate; }
+  @keyframes hp-hit {
+    0%   { transform: skewX(-6deg) translate(0, 0); background: #ff3b3b; }
+    15%  { transform: skewX(-6deg) translate(-10px, 3px) rotate(-1.5deg); }
+    30%  { transform: skewX(-6deg) translate(9px, -3px) rotate(1.5deg); background: #ff6b6b; }
+    45%  { transform: skewX(-6deg) translate(-6px, 2px); }
+    60%  { transform: skewX(-6deg) translate(4px, -1px); }
+    100% { transform: skewX(-6deg) translate(0, 0); }
+  }
+  @keyframes hp-pulse { from { filter: brightness(1); } to { filter: brightness(1.6); } }
+
+  /* ---------- weapon (bottom right) ---------- */
+  #weapon-panel { position: absolute; right: 30px; bottom: 30px; min-width: 280px; padding: 8px 18px 12px; display: grid; grid-template-columns: 96px 1fr; column-gap: 14px; align-items: center; }
+  #weapon-icon { width: 96px; height: 50px; }
+  #weapon-icon svg { width: 100%; height: 100%; overflow: visible; }
+  #weapon-name { font-size: 20px; color: var(--ink); }
+  #weapon-alt { display: none; font-size: 13px; color: #8a1f1f; margin-top: -2px; }
+  #ammo-line { display: flex; align-items: baseline; gap: 6px; line-height: 1; }
+  #ammo-mag { font-size: 52px; color: #fff; -webkit-text-stroke: 8px var(--ink); paint-order: stroke fill; }
+  #ammo-sep { font-size: 24px; opacity: .6; }
+  #ammo-reserve { font-size: 26px; color: var(--ink); opacity: .8; }
+  #reload-indicator { grid-column: 1 / 3; margin-top: 6px; text-align: center; font-size: 18px; color: var(--ink); background: var(--yellow); border: 4px solid var(--ink); display: none; animation: blink .45s steps(2) infinite; }
+  #reload-indicator.on { display: block; }
+  @keyframes blink { 50% { background: var(--orange); } }
+
+  /* ---------- top bar ---------- */
+  #top-bar { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 16px; }
+  #top-bar .pill { padding: 4px 20px; font-size: 20px; background: var(--dots), linear-gradient(#ffe84d, var(--yellow)); }
+  #top-bar b { font-size: 30px; margin-left: 8px; font-weight: 400; }
+
+  /* ---------- crosshair & hitmarker ---------- */
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; --gap: 8px; }
+  #crosshair i { position: absolute; background: #fff; border: 2px solid var(--ink); }
+  #crosshair .t { width: 6px; height: 12px; left: -3px; top: calc(var(--gap) * -1 - 12px); }
+  #crosshair .b { width: 6px; height: 12px; left: -3px; top: var(--gap); }
+  #crosshair .l { width: 12px; height: 6px; top: -3px; left: calc(var(--gap) * -1 - 12px); }
+  #crosshair .r { width: 12px; height: 6px; top: -3px; left: var(--gap); }
+  #crosshair .dot { width: 6px; height: 6px; left: -3px; top: -3px; }
+
+  #hitmarker { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; }
+  #hitmarker i { position: absolute; width: 16px; height: 6px; left: -8px; top: -3px; background: #fff; border: 2px solid var(--ink); }
+  #hitmarker i:nth-child(1) { transform: rotate(45deg) translateX(17px); }
+  #hitmarker i:nth-child(2) { transform: rotate(135deg) translateX(17px); }
+  #hitmarker i:nth-child(3) { transform: rotate(225deg) translateX(17px); }
+  #hitmarker i:nth-child(4) { transform: rotate(315deg) translateX(17px); }
+  #hitmarker.crit i { background: var(--yellow); }
+  #hitmarker.kill i { background: var(--red); }
+  #hitmarker.pop { animation: hm-pop .24s ease-out; }
+  @keyframes hm-pop { 0% { opacity: 1; transform: scale(1.7); } 100% { opacity: 0; transform: scale(.9); } }
+
+  /* ---------- vignette, damage numbers, banner ---------- */
+  #vignette { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 42%, rgba(227, 36, 43, .9) 100%); }
+  #damage-numbers { position: absolute; inset: 0; overflow: hidden; }
+  .dmg { position: absolute; left: 0; top: 0; translate: -50% -50%; font-size: calc(30px * var(--s, 1)); color: #fff; -webkit-text-stroke: 8px var(--ink); paint-order: stroke fill; will-change: transform; display: none; white-space: nowrap; }
+  .dmg.crit { font-size: calc(50px * var(--s, 1)); color: var(--yellow); }
+  .dmg.melee { font-size: calc(38px * var(--s, 1)); color: var(--orange); }
+  #banner { position: absolute; left: 50%; top: 22%; translate: -50% 0; font-size: 72px; color: var(--yellow); -webkit-text-stroke: 12px var(--ink); paint-order: stroke fill; opacity: 0; white-space: nowrap; }
+  #banner.show { animation: banner 1.8s ease-out; }
+  @keyframes banner {
+    0%   { opacity: 0; transform: scale(.4) rotate(-6deg); }
+    12%  { opacity: 1; transform: scale(1.15) rotate(2deg); }
+    22%  { transform: scale(1) rotate(-2deg); }
+    80%  { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-20px) rotate(-2deg); }
+  }
+  #mute-hint { position: absolute; left: 50%; bottom: 8px; translate: -50% 0; font-size: 13px; color: #fff; -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; opacity: .85; }
+
+  /* ---------- overlays ---------- */
+  .overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--dots), rgba(10, 10, 14, .82); color: #fff; text-align: center; cursor: pointer; z-index: 10; }
+  .overlay h1 { margin: 0; font-size: clamp(54px, 10vw, 120px); line-height: .95; color: var(--yellow); -webkit-text-stroke: 14px var(--ink); paint-order: stroke fill; transform: rotate(-3deg) skewX(-6deg); text-shadow: 8px 8px 0 var(--ink); }
+  .overlay h2 { margin: 0; font-size: 36px; color: #fff; -webkit-text-stroke: 9px var(--ink); paint-order: stroke fill; animation: bob 1s ease-in-out infinite alternate; }
+  .overlay p { margin: 0; font-size: 22px; line-height: 1.5; -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; }
+  .overlay .keys { padding: 12px 24px; font-size: 17px; line-height: 1.8; }
+  #overlay-dead { display: none; background: var(--dots), rgba(90, 0, 10, .85); }
+  #overlay-dead h1 { color: var(--red); }
+  @keyframes bob { from { transform: translateY(0); } to { transform: translateY(-8px); } }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div id="vignette"></div>
+  <div id="damage-numbers"></div>
+
+  <div id="top-bar">
+    <div class="panel pill">WAVE<b id="wave">1</b></div>
+    <div class="panel pill">KILLS<b id="kills">0</b></div>
+  </div>
+
+  <div id="banner"></div>
+
+  <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="dot"></i></div>
+  <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+
+  <div id="health-panel" class="panel">
+    <div class="label">HEALTH</div>
+    <div id="health-bar"><div id="health-fill"></div><span id="health-text">100</span></div>
+  </div>
+
+  <div id="weapon-panel" class="panel">
+    <div id="weapon-icon"></div>
+    <div>
+      <div id="weapon-name">PISTOL</div>
+      <div id="weapon-alt"></div>
+      <div id="ammo-line"><span id="ammo-mag">12</span><span id="ammo-sep">/</span><span id="ammo-reserve">60</span></div>
+    </div>
+    <div id="reload-indicator">RELOADING</div>
+  </div>
+
+  <div id="mute-hint">M: MUTE</div>
+</div>
+
+<div id="overlay-start" class="overlay">
+  <h1>CABLE BOTS</h1>
+  <h2>CLICK TO PLAY</h2>
+  <div class="panel keys">
+    WASD move &nbsp;·&nbsp; MOUSE look &nbsp;·&nbsp; SHIFT sprint &nbsp;·&nbsp; SPACE jump<br>
+    C / CTRL slide (while sprinting) &nbsp;·&nbsp; LMB fire &nbsp;·&nbsp; RMB aim &nbsp;·&nbsp; R reload &nbsp;·&nbsp; V melee<br>
+    1-4 / WHEEL switch weapon &nbsp;·&nbsp; TAB shotgun ammo (needs reload) &nbsp;·&nbsp; M mute
+  </div>
+</div>
+
+<div id="overlay-dead" class="overlay">
+  <h1>SERVICE TERMINATED</h1>
+  <p>YOU REACHED WAVE <span id="dead-wave">1</span> · <span id="dead-kills">0</span> BOTS DISCONNECTED</p>
+  <h2>CLICK TO RESTART</h2>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js" } }
+</script>
+<script type="module" src="main.js"></script>
+</body>
+</html>
