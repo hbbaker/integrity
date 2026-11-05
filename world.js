@@ -85,7 +85,11 @@ function createBoxGeometry(width, height, depth, tileSize) {
 
 export class World {
   constructor(scene, config) {
+    this.scene = scene;
+    this.config = config;
     this.half = config.arena.half;
+    this.sun = null;
+    this.group = null;
     this.stepHeight = config.player.stepHeight;
     this.solids = [];
     // Set by move(): which axes were blocked. Read right after calling it.
@@ -98,9 +102,45 @@ export class World {
       hazard: createHazardTexture(),
     };
     this._buildLights(scene);
-    this._buildFloor(scene);
-    this._buildWalls(scene, config.arena.wallHeight);
-    this._buildProps(scene);
+    this.build('waves');
+  }
+
+  /**
+   * (Re)build the level for a mode: 'waves' = the small arena, 'sandbox' = the big open map.
+   * Everything solid lives in one group so a rebuild is a clean swap. The caller must
+   * re-render the (static) shadow map afterwards: renderer.shadowMap.needsUpdate = true.
+   */
+  build(mode) {
+    if (this.group) {
+      this.scene.remove(this.group);
+      this.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    }
+    this.group = new THREE.Group();
+    this.scene.add(this.group);
+    this.solids = [];
+    const area = mode === 'sandbox' ? this.config.sandbox : this.config.arena;
+    this.half = area.half;
+    this._fitSun();
+    this._buildFloor(this.group);
+    this._buildWalls(this.group, area.wallHeight);
+    if (mode === 'sandbox') this._buildSandboxProps(this.group);
+    else this._buildProps(this.group);
+  }
+
+  _fitSun() {
+    const sun = this.sun;
+    const k = (this.half + 10) / 40; // 1 for the small arena
+    sun.position.set(24 * k, 42 * k, 14 * k);
+    const cam = sun.shadow.camera;
+    cam.left = cam.bottom = -(this.half + 10);
+    cam.right = cam.top = this.half + 10;
+    cam.far = 120 * k + 40;
+    cam.updateProjectionMatrix();
+    const size = this.half > 40 ? 4096 : 2048;
+    if (sun.shadow.mapSize.x !== size) {
+      sun.shadow.mapSize.set(size, size);
+      if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+    }
   }
 
   /* ----------------------------- construction ----------------------------- */
@@ -121,6 +161,7 @@ export class World {
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.04;
     scene.add(sun);
+    this.sun = sun;
   }
 
   _buildFloor(scene) {
@@ -172,6 +213,52 @@ export class World {
     this._addBox(scene, 0, 18, 5, 1.2, 1.5, concrete, 4);
     this._addBox(scene, 22, 0, 1.5, 1.5, 5, this._container(PALETTE.green), 2);
     this._addBox(scene, -24, -2, 1.5, 1.5, 5, this._container(PALETTE.yellow), 2);
+  }
+
+  /** The big open map: a clear central plaza ringed by platforms, container yards, walls and ramps. */
+  _buildSandboxProps(scene) {
+    const steel = material(0xffffff, { map: this.textures.steel, roughness: 0.5, metalness: 0.7 });
+    const hazard = material(0xffffff, { map: this.textures.hazard, roughness: 0.6, metalness: 0.3 });
+    const concrete = material(0xc4c6c2, { map: this.textures.concrete, roughness: 0.9 });
+    const colours = [PALETTE.red, PALETTE.blue, PALETTE.green, PALETTE.orange, PALETTE.yellow, PALETTE.gray];
+    const containers = colours.map((c) => this._container(c));
+
+    // Raised steel platforms with ramps, one per quadrant (varied heights; ramps rise 1.2-2.4 m).
+    const decks = [[-60, -60, 1.2, '-x'], [60, -55, 1.8, '+x'], [-55, 60, 2.4, '+z'], [62, 58, 1.2, '-z']];
+    for (const [x, z, h, dir] of decks) {
+      this._addBox(scene, x, z, 14, h, 10, steel, 2);
+      const len = h * 4; // gentle slope
+      if (dir === '-x') this._addRamp(scene, x - 7 - len, x - 7, z - 3, z + 3, h, '-x', hazard);
+      else if (dir === '+x') this._addRamp(scene, x + 7, x + 7 + len, z - 3, z + 3, h, '+x', hazard);
+      else if (dir === '+z') this._addRamp(scene, x - 3, x + 3, z + 5, z + 5 + len, h, '+z', hazard);
+      else this._addRamp(scene, x - 3, x + 3, z - 5 - len, z - 5, h, '-z', hazard);
+    }
+
+    // Stepped pyramid in the north: climbable by jumping.
+    for (let i = 0; i < 4; i++) this._addBox(scene, 0, -70, 16 - i * 4, 0.9 * (i + 1), 16 - i * 4, steel, 2);
+
+    // Container yards (deterministic scatter, kept clear of the spawn plaza).
+    let seed = 7;
+    const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    let placed = 0;
+    for (let tries = 0; tries < 400 && placed < 34; tries++) {
+      const x = (rand() * 2 - 1) * (this.half - 8);
+      const z = (rand() * 2 - 1) * (this.half - 8);
+      if (Math.hypot(x, z - 70) < 14) continue; // spawn plaza
+      if (Math.abs(x) < 10 && z < -60) continue; // pyramid
+      if (decks.some(([dx, dz]) => Math.hypot(x - dx, z - dz) < 24)) continue;
+      const w = 2.5 + rand() * 4;
+      const d = 2.5 + rand() * 4;
+      const h = [1.0, 1.5, 2.5, 2.5][Math.floor(rand() * 4)];
+      const mat = rand() < 0.3 ? concrete : containers[Math.floor(rand() * containers.length)];
+      this._addBox(scene, x, z, w, h, d, mat, mat === concrete ? 4 : 2);
+      placed += 1;
+    }
+
+    // Long low walls bordering the plaza and a central landmark.
+    this._addBox(scene, -24, 70, 1, 1.2, 14, concrete, 4);
+    this._addBox(scene, 24, 70, 1, 1.2, 14, concrete, 4);
+    this._addBox(scene, 0, 0, 6, 2.5, 6, containers[3], 2);
   }
 
   _addBox(scene, cx, cz, width, height, depth, mat, tileSize) {

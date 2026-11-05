@@ -33,6 +33,13 @@ export class Player {
     this.vel = new THREE.Vector3();
     this.wish = new THREE.Vector3();
     this.slideDir = new THREE.Vector3();
+    this._camA = new THREE.Vector3();
+    this._camB = new THREE.Vector3();
+    this._pivot = new THREE.Vector3();
+    this._fwd = new THREE.Vector3();
+    this._right = new THREE.Vector3();
+    this._up = new THREE.Vector3();
+    this.aimBlend = 0;
 
     // Callbacks wired up in main.js.
     this.onLand = null;
@@ -46,7 +53,7 @@ export class Player {
 
   reset() {
     const c = this.cfg;
-    this.pos.set(0, 0, 22);
+    this.pos.set(0, 0, this.spawnZ ?? 22);
     this.prevPos.copy(this.pos);
     this.vel.set(0, 0, 0);
     this.yaw = 0;
@@ -59,6 +66,8 @@ export class Player {
 
     this.health = c.maxHealth;
     this.alive = true;
+    this.thirdPerson = false;
+    this.tpBlend = 0; // 0 = first person eye, 1 = full over-the-shoulder camera
 
     this.grounded = true;
     this.coyote = 0;
@@ -106,6 +115,29 @@ export class Player {
     this.pitch = clamp(this.pitch + climb, -1.55, 1.55);
   }
 
+  /** True once the camera has pulled far enough back that the wizard (not the viewmodel) should be shown. */
+  get thirdPersonVisible() {
+    return this.tpBlend > 0.35;
+  }
+
+  toggleView() {
+    this.thirdPerson = !this.thirdPerson;
+  }
+
+  /**
+   * Over-the-shoulder camera target (unobstructed). Sets `out` to the camera position and
+   * returns the distance back from the pivot. Aiming pulls in closer and across the shoulder.
+   */
+  _orbit(out, pivot, forward, right, yawPos, blend) {
+    const t = this.cfg.thirdPerson;
+    const dist = lerp(t.dist, t.aimDist, this.aimBlend) * blend;
+    const shoulder = lerp(t.shoulder, t.aimShoulder, this.aimBlend) * blend;
+    pivot.set(yawPos.x, yawPos.y + this.eyeHeight - t.pivotDrop + this.stepSmooth, yawPos.z);
+    out.copy(pivot).addScaledVector(forward, -dist).addScaledVector(right, shoulder);
+    out.y += 0.12 * blend;
+    return dist;
+  }
+
   get speed() {
     return Math.hypot(this.vel.x, this.vel.z);
   }
@@ -122,10 +154,16 @@ export class Player {
     right.set(Math.cos(yaw), 0, -Math.sin(yaw));
     up.crossVectors(right, forward);
     origin.set(this.pos.x, this.pos.y + this.cfg.eyeHeight, this.pos.z);
+    if (this.tpBlend > 0.001) {
+      // Third person: start the ray on the crosshair line at the wizard's depth, so shots land
+      // exactly under the crosshair and nothing between the camera and the wizard can block them.
+      const dist = this._orbit(this._camA, this._pivot, forward, right, this.pos, this.tpBlend);
+      origin.copy(this._camA).addScaledVector(forward, dist);
+    }
   }
 
   takeDamage(amount, fromPos) {
-    if (!this.alive) return;
+    if (!this.alive || this.invulnerable) return;
     this.health = Math.max(0, this.health - amount);
     this.shake = 1;
     if (fromPos) { // small shove away from the attacker
@@ -316,11 +354,30 @@ export class Player {
     this.kickYaw *= Math.exp(-c.kickRecover * dt);
     this.shake = Math.max(0, this.shake - dt * 3.5);
     const s = this.shake * this.shake * c.shakeAmount;
+    const blend = this.tpBlend = damp(this.tpBlend, this.thirdPerson ? 1 : 0, 9, dt);
     cam.rotation.set(
       this.pitch + this.kickPitch + (Math.random() - 0.5) * s,
       this.yaw + this.kickYaw + (Math.random() - 0.5) * s,
-      lerp(this.prevRoll, this.roll, alpha) + (Math.random() - 0.5) * s,
+      lerp(this.prevRoll, this.roll, alpha) * (1 - blend) + (Math.random() - 0.5) * s,
     );
+
+    if (blend > 0.001) {
+      // Over-the-shoulder: slide the camera from the eye to the orbit position, never through geometry.
+      const pos = this._camB.set(
+        lerp(this.prevPos.x, this.pos.x, alpha), lerp(this.prevPos.y, this.pos.y, alpha), lerp(this.prevPos.z, this.pos.z, alpha),
+      );
+      this.getAim(this._camA, this._fwd, this._right, this._up); // forward/right only; origin overwritten below
+      this._orbit(this._camA, this._pivot, this._fwd, this._right, pos, blend);
+      const dx = this._camA.x - this._pivot.x;
+      const dy = this._camA.y - this._pivot.y;
+      const dz = this._camA.z - this._pivot.z;
+      const len = Math.hypot(dx, dy, dz) || 1;
+      this._up.set(dx / len, dy / len, dz / len);
+      const hit = this.world.raycast(this._pivot, this._up, len + 0.25);
+      const d = Math.min(len, Math.max(0.25, hit - 0.25));
+      this._camA.copy(this._pivot).addScaledVector(this._up, d);
+      cam.position.lerp(this._camA, blend);
+    }
 
     const targetFov = c.fov + (this.sliding ? c.slideFovAdd : this.sprinting ? c.sprintFovAdd : 0) - this.zoom;
     this.fov = damp(this.fov, targetFov, c.fovLerp, dt);

@@ -8,6 +8,7 @@ import { Enemies } from './enemies.js';
 import { Pickups } from './pickups.js';
 import { Hud } from './hud.js';
 import { Inventory } from './inventory.js';
+import { Wizard } from './wizard.js';
 import { AudioFX } from './audio.js';
 
 /* ========================================================================== *
@@ -23,6 +24,7 @@ const CONFIG = {
   fogColor: 0xbfcbd4,
 
   arena: { half: 30, wallHeight: 2.5 }, // 60 x 60
+  sandbox: { half: 100, wallHeight: 6 }, // 200 x 200 open map
 
   player: {
     maxHealth: 100,
@@ -71,6 +73,9 @@ const CONFIG = {
     kickRecover: 12, // how fast camera recoil settles
     shakeAmount: 0.06, // camera shake when hurt
     hitKnockback: 3.5,
+
+    // Third person (T): over-the-shoulder camera. aim* values are used while aiming down sights.
+    thirdPerson: { dist: 3.2, shoulder: 0.55, aimDist: 1.5, aimShoulder: 0.85, pivotDrop: 0.15 },
   },
 
   weapons: {
@@ -228,10 +233,10 @@ const scene = new THREE.Scene();
 const envMap = createEnvironment(renderer); // sky-lit reflections and ambient light for all PBR materials
 scene.environment = envMap;
 scene.environmentIntensity = 0.7;
-scene.add(createSkyDome(150));
-scene.fog = new THREE.Fog(CONFIG.fogColor, 45, 130);
+scene.add(createSkyDome(300));
+scene.fog = new THREE.Fog(CONFIG.fogColor, 45, 130); // sandbox widens this in startMode
 
-const camera = new THREE.PerspectiveCamera(CONFIG.player.fov, window.innerWidth / window.innerHeight, 0.1, 200);
+const camera = new THREE.PerspectiveCamera(CONFIG.player.fov, window.innerWidth / window.innerHeight, 0.1, 320);
 
 /* ========================================================================== *
  *  Game objects
@@ -243,6 +248,8 @@ const world = new World(scene, CONFIG);
 const player = new Player(camera, world, CONFIG.player);
 const enemies = new Enemies({ cfg: CONFIG, scene, world, fx, player });
 const weapons = new Weapons({ cfg: CONFIG, camera, mainScene: scene, envMap, world, enemies, player, fx, hud, audio });
+const wizard = new Wizard({ scene, player, weapons });
+weapons.tp = wizard;
 const pickups = new Pickups(scene, CONFIG);
 const inventory = new Inventory({
   weapons,
@@ -253,7 +260,7 @@ const inventory = new Inventory({
   },
 });
 
-const game = { kills: 0, time: 0 };
+const game = { kills: 0, time: 0, mode: null }; // mode: null (menu) | 'waves' | 'sandbox'
 
 player.onDamage = () => {
   hud.damage();
@@ -384,13 +391,13 @@ document.addEventListener('keydown', (e) => {
     if (e.code === 'KeyI') inventory.onResume();
     else if (e.code === 'Escape') {
       inventory.close();
-      hud.showStart(player.alive);
+      hud.showStart(player.alive, game.mode !== null);
     } else if (e.code.startsWith('Digit') && e.code <= 'Digit3') inventory.selectSlot(Number(e.code.slice(5)) - 1);
     else return;
     e.preventDefault();
     return;
   }
-  if (e.code === 'KeyI' && player.alive && !e.repeat) {
+  if (e.code === 'KeyI' && player.alive && game.mode !== null && !e.repeat) {
     inventory.open();
     hud.showStart(false);
     document.exitPointerLock(); // the game pauses while the pointer is free
@@ -412,6 +419,7 @@ document.addEventListener('keydown', (e) => {
     case 'KeyC': case 'ControlLeft': input.slidePressed = true; break;
     case 'KeyR': input.reloadPressed = true; break;
     case 'KeyV': input.meleePressed = true; break;
+    case 'KeyT': player.toggleView(); break; // first / third person
     case 'Tab': input.ammoPressed = true; break; // swap shotgun ammo type
     case 'Digit1': input.selectSlot = 0; break;
     case 'Digit2': input.selectSlot = 1; break;
@@ -460,32 +468,58 @@ window.addEventListener('blur', () => input.clearAll());
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   input.clearAll(); // avoid keys stuck "down" when focus changes
-  hud.showStart(!locked && player.alive && !inventory.isOpen);
+  hud.showStart(!locked && player.alive && !inventory.isOpen, game.mode !== null);
 });
 
-document.addEventListener('pointerlockerror', () => hud.showStart(player.alive));
+document.addEventListener('pointerlockerror', () => hud.showStart(player.alive, game.mode !== null));
 
-hud.el.start.addEventListener('click', () => {
-  audio.unlock();
-  requestLock();
-});
+hud.el.modeSandbox.addEventListener('click', (e) => { e.stopPropagation(); startMode('sandbox'); });
+hud.el.modeWaves.addEventListener('click', (e) => { e.stopPropagation(); startMode('waves'); });
+hud.el.resume.addEventListener('click', (e) => { e.stopPropagation(); audio.unlock(); requestLock(); });
+hud.el.toMenu.addEventListener('click', (e) => { e.stopPropagation(); toMenu(); });
+hud.el.deadMenu.addEventListener('click', (e) => { e.stopPropagation(); toMenu(); });
 
 hud.el.dead.addEventListener('click', () => {
   audio.unlock();
-  restart();
+  startMode(game.mode);
 });
 
-function restart() {
-  player.reset();
-  weapons.reset();
+/** Back to the mode-select screen (the scene keeps rendering behind it). */
+function toMenu() {
+  game.mode = null;
   enemies.clear();
   pickups.clear();
   hud.clearNumbers();
   hud.hideDeath();
+  player.invulnerable = false;
+  weapons.infiniteAmmo = false;
+  hud.showStart(true, false);
+}
+
+/** Start (or restart) a mode: rebuild the level, reset everything, lock the pointer. */
+function startMode(mode) {
+  const sandbox = mode === 'sandbox';
+  game.mode = mode;
+  world.build(mode);
+  renderer.shadowMap.needsUpdate = true; // shadows are static: re-render them for the new level
+  scene.fog.far = sandbox ? 230 : 130;
+  scene.fog.near = sandbox ? 70 : 45;
+  player.spawnZ = sandbox ? CONFIG.sandbox.half - 30 : 22;
+  player.reset();
+  wizard.reset();
+  player.invulnerable = sandbox;
+  weapons.reset();
+  weapons.infiniteAmmo = sandbox;
+  enemies.clear();
+  pickups.clear();
+  hud.clearNumbers();
+  hud.hideDeath();
+  hud.setMode(mode);
   game.kills = 0;
   hud.setKills(0);
-  director.reset();
+  if (!sandbox) director.reset();
   accumulator = 0;
+  audio.unlock();
   requestLock();
 }
 
@@ -507,7 +541,7 @@ function fixedUpdate(dt) {
   player.update(dt, input);
   weapons.update(dt, input);
   enemies.update(dt);
-  director.update(dt);
+  if (game.mode === 'waves') director.update(dt);
   pickups.update(dt, player.pos);
   input.clearEdges();
 }
@@ -515,6 +549,7 @@ function fixedUpdate(dt) {
 function renderFrame(alpha, dt) {
   player.applyCamera(alpha, dt);
   camera.updateMatrixWorld(); // HUD projection and viewmodel read this frame's camera
+  wizard.update(dt, alpha, game.time, weapons);
   weapons.updateView(dt, game.time);
   enemies.animate(alpha, game.time, dt);
   pickups.animate(game.time);
@@ -533,7 +568,7 @@ function frame(now) {
   lastTime = now;
   game.time += dt;
 
-  const playing = locked && player.alive;
+  const playing = locked && player.alive && game.mode !== null;
   if (!playing) weapons.cease(); // never leave a beam (or its hum) running while paused
   let alpha = 1;
   if (playing) {
@@ -550,6 +585,6 @@ function frame(now) {
   renderFrame(alpha, dt);
 }
 
-director.reset();
 hud.setKills(0);
+hud.showStart(true, false);
 requestAnimationFrame(frame);

@@ -114,6 +114,10 @@
   .overlay h2 { margin: 0; font-size: 36px; color: #fff; -webkit-text-stroke: 9px var(--ink); paint-order: stroke fill; animation: bob 1s ease-in-out infinite alternate; }
   .overlay p { margin: 0; font-size: 22px; line-height: 1.5; -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; }
   .overlay .keys { padding: 12px 24px; font-size: 17px; line-height: 1.8; }
+  .btn-row { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+  .menu-btn { cursor: pointer; font: inherit; font-size: 34px; padding: 14px 40px; display: flex; flex-direction: column; align-items: center; gap: 4px; background: var(--dots), linear-gradient(#ffe84d, var(--yellow)); }
+  .menu-btn small { font-size: 14px; opacity: .75; }
+  .menu-btn:hover { filter: brightness(1.1); transform: skewX(-6deg) translateY(-4px); }
   #overlay-dead { display: none; background: var(--dots), rgba(90, 0, 10, .85); }
   #overlay-dead h1 { color: var(--red); }
 
@@ -156,7 +160,7 @@
   <div id="damage-numbers"></div>
 
   <div id="top-bar">
-    <div class="panel pill">WAVE<b id="wave">1</b></div>
+    <div id="wave-pill" class="panel pill">WAVE<b id="wave">1</b></div>
     <div class="panel pill">KILLS<b id="kills">0</b></div>
   </div>
 
@@ -186,12 +190,20 @@
 
 <div id="overlay-start" class="overlay">
   <h1>CABLE BOTS</h1>
-  <h2>CLICK TO PLAY</h2>
+  <h2 id="start-sub">CHOOSE A MODE</h2>
+  <div id="mode-buttons" class="btn-row">
+    <button id="mode-sandbox" class="panel menu-btn">SANDBOX<small>OPEN WORLD · NO ENEMIES</small></button>
+    <button id="mode-waves" class="panel menu-btn">WAVE GAME<small>SURVIVE THE BOTS</small></button>
+  </div>
+  <div id="pause-buttons" class="btn-row" style="display:none">
+    <button id="start-resume" class="panel menu-btn">RESUME</button>
+    <button id="start-menu" class="panel menu-btn">MAIN MENU</button>
+  </div>
   <div class="panel keys">
     WASD move &nbsp;·&nbsp; MOUSE look &nbsp;·&nbsp; SHIFT sprint &nbsp;·&nbsp; SPACE jump<br>
     1-3 weapon slots &nbsp;·&nbsp; 4 fists &nbsp;·&nbsp; I inventory<br>
     C / CTRL slide (while sprinting) &nbsp;·&nbsp; LMB fire &nbsp;·&nbsp; RMB aim &nbsp;·&nbsp; R reload &nbsp;·&nbsp; V melee<br>
-    WHEEL cycle weapons &nbsp;·&nbsp; TAB shotgun ammo (needs reload) &nbsp;·&nbsp; M mute
+    T first / third person &nbsp;·&nbsp; WHEEL cycle weapons &nbsp;·&nbsp; TAB shotgun ammo (needs reload) &nbsp;·&nbsp; M mute
   </div>
 </div>
 
@@ -208,6 +220,7 @@
   <h1>SERVICE TERMINATED</h1>
   <p>YOU REACHED WAVE <span id="dead-wave">1</span> · <span id="dead-kills">0</span> BOTS DISCONNECTED</p>
   <h2>CLICK TO RESTART</h2>
+  <button id="dead-menu" class="panel menu-btn">MAIN MENU</button>
 </div>
 
 <script type="importmap">

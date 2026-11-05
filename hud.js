@@ -34,7 +34,7 @@ export class Hud {
       crosshair: $('crosshair'), hitmarker: $('hitmarker'),
       wave: $('wave'), kills: $('kills'), banner: $('banner'),
       vignette: $('vignette'), numbers: $('damage-numbers'),
-      start: $('overlay-start'), dead: $('overlay-dead'), deadWave: $('dead-wave'), deadKills: $('dead-kills'),
+      start: $('overlay-start'), modeSandbox: $('mode-sandbox'), modeWaves: $('mode-waves'), resume: $('start-resume'), toMenu: $('start-menu'), deadMenu: $('dead-menu'), startTitle: $('start-sub'), waveGroup: $('wave-pill'), modeButtons: $('mode-buttons'), pauseButtons: $('pause-buttons'), dead: $('overlay-dead'), deadWave: $('dead-wave'), deadKills: $('dead-kills'),
     };
 
     // Cached values so the DOM is only touched when something actually changes.
@@ -137,8 +137,17 @@ export class Hud {
     b.classList.add('show');
   }
 
-  showStart(visible) {
+  /** The start overlay: mode select before a game (inGame=false) or pause screen during one. */
+  showStart(visible, inGame = false) {
     this.el.start.style.display = visible ? 'flex' : 'none';
+    this.el.modeButtons.style.display = inGame ? 'none' : 'flex';
+    this.el.pauseButtons.style.display = inGame ? 'flex' : 'none';
+    this.el.startTitle.textContent = inGame ? 'PAUSED' : 'CHOOSE A MODE';
+  }
+
+  setMode(mode) {
+    this.el.waveGroup.style.display = mode === 'sandbox' ? 'none' : '';
+    this.el.banner.textContent = '';
   }
 
   showDeath(wave, kills) {

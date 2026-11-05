@@ -65,8 +65,11 @@ function makeSleeve(dir) {
  * (180 degrees). `sleeveDir` is the sleeve's direction in the gun's space; it is
  * a separate child so it is NOT rotated with the hand.
  */
+let BUILD_ARMS = true; // false while building the third-person copies (the wizard has its own arms)
+
 function makeArm(side, palmRoll, sleeveDir) {
   const arm = new THREE.Group();
+  if (!BUILD_ARMS) return arm;
   const hand = new THREE.Group();
   hand.add(box(0.08, 0.045, 0.095, MAT.glove));
   const fingers = at(box(0.08, 0.04, 0.055, MAT.glove), 0, -0.027, -0.07);
@@ -182,6 +185,17 @@ const MODEL_BUILDERS = {
   raygun: () => buildRaygun(makeArm),
 };
 
+/** A gun model with no first-person hands or sleeves, for the third-person wizard to hold. Null for fists. */
+export function buildHeldModel(id) {
+  if (id === 'fists') return null;
+  BUILD_ARMS = false;
+  try {
+    return MODEL_BUILDERS[id]();
+  } finally {
+    BUILD_ARMS = true;
+  }
+}
+
 const FISTS = 0; // weapon index of the fists; always available on key 4 and in the wheel cycle
 
 export class Weapons {
@@ -225,6 +239,7 @@ export class Weapons {
     // Fists (index 0) are always on key 4 and are not part of the loadout.
     this.loadout = [1, 2, 3];
 
+    this.tp = null; // the Wizard, set by main.js: third-person muzzle + flash
     this._createBeam(mainScene);
 
     // Aim scratch vectors (reused every shot).
@@ -314,6 +329,15 @@ export class Weapons {
     return slot;
   }
 
+  /** Sandbox: keep every cell full so nothing ever runs dry (reloading still resets the beam falloff). */
+  _refillAll() {
+    for (const s of this.slots) {
+      if (s.base.melee) continue;
+      s.mag = s.base.mag;
+      s.reserve = s.cfg.maxReserve || s.reserve;
+    }
+  }
+
   _resetSlot(slot) {
     if (slot.typeCfgs) {
       slot.type = slot.base.defaultAmmo;
@@ -400,6 +424,12 @@ export class Weapons {
     this.switchTimer = this.cfg.switchTime / 2;
   }
 
+  /** Muzzle flash on the viewmodel, and on the wizard's gun when it is visible. */
+  _flashFire(size, intensity) {
+    this.flash.fire(size, intensity);
+    if (this.tp && this.player.thirdPersonVisible) this.tp.flash.fire(size, intensity);
+  }
+
   _equip(index) {
     if (this.index >= 0) this.models[this.index].root.visible = false;
     this.index = index;
@@ -437,6 +467,7 @@ export class Weapons {
   /* ------------------------------ fixed update --------------------------- */
 
   update(dt, input) {
+    if (this.infiniteAmmo) this._refillAll();
     this.cooldown = Math.max(0, this.cooldown - dt);
     this.meleeCooldown -= dt;
     this.triggerBuffer = Math.max(0, this.triggerBuffer - dt);
@@ -705,12 +736,17 @@ export class Weapons {
     const beam = this.beam;
 
     // Muzzle position: viewmodel space -> world space (the viewmodel camera mirrors the main one's orientation).
-    this.anchor.updateMatrixWorld(true);
-    model.muzzle.getWorldPosition(this._muzzleW);
-    this._muzzleW.applyQuaternion(cam.quaternion).add(cam.position);
-
-    this._fwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
-    const origin = cam.position;
+    let origin = cam.position;
+    if (this.tp && this.player.thirdPersonVisible) {
+      this.tp.muzzleWorld(this._muzzleW); // beam leaves the wizard's gun, aimed through the crosshair
+      this.player.getAim(this._origin, this._fwd, this._right, this._up);
+      origin = this._origin;
+    } else {
+      this.anchor.updateMatrixWorld(true);
+      model.muzzle.getWorldPosition(this._muzzleW);
+      this._muzzleW.applyQuaternion(cam.quaternion).add(cam.position);
+      this._fwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    }
     const wallT = this.world.raycast(origin, this._fwd, c.range);
     const hit = this.enemies.raycast(origin, this._fwd, Math.min(c.range, wallT), c.beamRadius);
     const endT = hit ? hit.t : Math.min(wallT, c.range);
@@ -741,7 +777,7 @@ export class Weapons {
     this.worldLight.position.copy(end).addScaledVector(this._fwd, -0.6);
     this.worldLight.intensity = 14 * power;
     this.worldLightTime = 0.05;
-    this.flash.fire(0.3 * (1 - 0.5 * this.adsBlend), 5);
+    this._flashFire(0.3 * (1 - 0.5 * this.adsBlend), 5);
     beam.group.visible = true;
   }
 
@@ -869,13 +905,17 @@ export class Weapons {
     this.kick.vz += c.kickZ * 60;
     this.kick.vr += c.kickRot * 60;
 
-    this.flash.fire(c.flashSize * (1 - 0.6 * this.adsBlend), 6); // smaller flash so it does not cover the sights
+    this._flashFire(c.flashSize * (1 - 0.6 * this.adsBlend), 6); // smaller flash so it does not cover the sights
     this.audio.shoot(c.id);
 
-    this._from.copy(this._origin)
-      .addScaledVector(this._fwd, 0.7)
-      .addScaledVector(this._right, 0.2)
-      .addScaledVector(this._up, -0.16);
+    if (this.tp && player.thirdPersonVisible) {
+      this.tp.muzzleWorld(this._from); // shots leave the wizard's gun
+    } else {
+      this._from.copy(this._origin)
+        .addScaledVector(this._fwd, 0.7)
+        .addScaledVector(this._right, 0.2)
+        .addScaledVector(this._up, -0.16);
+    }
     this.worldLight.position.copy(this._origin).addScaledVector(this._fwd, 1.5);
     this.worldLight.intensity = c.worldLight;
     this.worldLightTime = 0.05;
@@ -1076,7 +1116,7 @@ export class Weapons {
     const ads = this.adsBlend;
     const aim = c.ads || home; // fists have no sights
     const loose = 1 - 0.85 * ads;
-    this.hud.setAim(ads);
+    this.hud.setAim(player.thirdPersonVisible ? 0 : ads); // no sights to look down in third person
     player.aimBlend = ads;
     player.zoom = c.ads ? c.ads.fovDrop * ads : 0;
 
@@ -1167,7 +1207,9 @@ export class Weapons {
         const p = clamp(1 - this.reloadTimer / c.reloadTime, 0, 1);
         energy = this.reloadFromEnergy + (Math.min(1, (w.mag + w.reserve) / c.mag) - this.reloadFromEnergy) * easeInOut(p);
       }
-      model.animate(dt, time, { firing: this.beamOn, energy, power: this.beamPower(w), reloading: this.reloading });
+      const state = { firing: this.beamOn, energy, power: this.beamPower(w), reloading: this.reloading };
+      model.animate(dt, time, state);
+      if (this.tp) this.tp.animateGun(this.index, dt, time, state);
     }
     if (this.beamOn) this._updateBeamVisual(dt, time, model);
 
@@ -1209,6 +1251,7 @@ export class Weapons {
 
   /** Draw the viewmodel on top of whatever is already in the framebuffer. */
   render(renderer) {
+    if (this.player.thirdPersonVisible) return; // the wizard holds the gun instead
     renderer.clearDepth();
     renderer.render(this.vmScene, this.vmCamera);
   }
