@@ -26,8 +26,9 @@ const MAT = {
   wood: material(0x6b4423, { roughness: 0.65 }),
   brass: material(0xb08a2e, { metalness: 0.9, roughness: 0.3 }),
   accent: material(0x7a3cff, { roughness: 0.5 }), // faint cable-company purple trim
-  glove: material(0x16171a, { roughness: 0.8 }),
-  sleeve: material(0x4a5236, { roughness: 0.95 }), // olive field jacket
+  glove: material(0x0b0d0c, { metalness: 0.85, roughness: 0.34 }), // black cybernetic hand
+  sleeve: material(0x1d2421, { metalness: 0.8, roughness: 0.4 }), // dark armoured forearm
+  glow: new THREE.MeshStandardMaterial({ color: 0x04120a, emissive: 0x2dff6a, emissiveIntensity: 1.8, roughness: 0.4 }),
 };
 
 function box(w, h, d, mat) {
@@ -53,19 +54,24 @@ function makeSleeve(dir) {
   // The cylinder's +Y axis is its wide (elbow) end; point it along `direction`.
   sleeve.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
   sleeve.position.copy(direction).multiplyScalar(length / 2);
-  return sleeve;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.067, 0.067, 0.02, 12), MAT.glow); // glowing green ring
+  band.quaternion.copy(sleeve.quaternion);
+  band.position.copy(direction).multiplyScalar(0.14);
+  const group = new THREE.Group();
+  group.add(sleeve, band);
+  return group;
 }
 
 /**
- * First-person arm: a gloved hand (palm, curled fingers, thumb) plus a jacket
- * sleeve that runs from the wrist back toward the camera and out of the frame.
+ * First-person arm: a black cybernetic hand (palm, curled fingers, thumb) plus an armoured
+ * forearm that runs from the wrist back toward the camera and out of the frame.
  *
  * The group's origin is the wrist. `palmRoll` rotates the hand about Z so the palm
  * can face a vertical grip (+/- 90 degrees) or wrap under a horizontal barrel
  * (180 degrees). `sleeveDir` is the sleeve's direction in the gun's space; it is
  * a separate child so it is NOT rotated with the hand.
  */
-let BUILD_ARMS = true; // false while building the third-person copies (the wizard has its own arms)
+let BUILD_ARMS = true; // false while building the third-person copies (the cyborg has its own arms)
 
 function makeArm(side, palmRoll, sleeveDir) {
   const arm = new THREE.Group();
@@ -76,7 +82,7 @@ function makeArm(side, palmRoll, sleeveDir) {
   fingers.rotation.x = 0.7; // curled around whatever is being held
   const thumb = at(box(0.024, 0.028, 0.06, MAT.glove), -side * 0.05, 0.005, -0.03);
   thumb.rotation.y = side * 0.4;
-  hand.add(fingers, thumb);
+  hand.add(fingers, thumb, at(box(0.05, 0.008, 0.05, MAT.glow), 0, 0.027, 0)); // knuckle light
   hand.rotation.z = palmRoll;
   arm.add(hand);
 
@@ -160,6 +166,46 @@ function buildSmg() {
   };
 }
 
+function buildSniper() {
+  const root = new THREE.Group();
+  const lens = new THREE.MeshStandardMaterial({ color: 0x2a6bff, metalness: 0.3, roughness: 0.05, emissive: 0x0a2a88, emissiveIntensity: 0.6 });
+  const boltHandle = new THREE.Group(); // slides back and lifts when cycled
+  boltHandle.add(
+    at(barrelPart(0.008, 0.07, MAT.steel), 0.045, -0.02, 0), // arm sticking out to the right
+    at(new THREE.Mesh(new THREE.SphereGeometry(0.016, 10, 8), MAT.steel), 0.08, -0.03, 0),
+  );
+  boltHandle.children[0].rotation.set(0, 0, Math.PI / 2); // lay the arm along X
+  boltHandle.position.set(0, 0.02, 0.12);
+  const leftArm = at(makeArm(-1, Math.PI, [-0.3, -0.35, 1]), 0, -0.1, -0.25); // palm up under the forend
+  const rightArm = at(makeArm(1, -Math.PI / 2, [0.3, -0.45, 1]), 0.05, -0.09, 0.22);
+  root.add(
+    at(barrelPart(0.014, 0.75, MAT.metal), 0, 0.02, -0.52), // long barrel
+    at(barrelPart(0.021, 0.09, MAT.steel), 0, 0.02, -0.9), // muzzle brake
+    at(box(0.06, 0.09, 0.36, MAT.polymer), 0, 0, 0.08), // receiver
+    at(box(0.056, 0.07, 0.34, MAT.polymer), 0, -0.02, -0.3), // forend
+    at(box(0.05, 0.1, 0.07, MAT.metal), 0, -0.085, 0.0), // magazine
+    at(box(0.05, 0.12, 0.055, MAT.polymer), 0, -0.085, 0.21), // grip
+    at(box(0.055, 0.12, 0.34, MAT.polymer), 0, -0.02, 0.45), // stock
+    at(box(0.058, 0.03, 0.12, MAT.accent), 0, 0.075, 0.5), // cheek rest
+    // Scope: a tube on two mounts with a bigger objective bell at the front.
+    at(barrelPart(0.026, 0.3, MAT.metal), 0, 0.09, 0.0),
+    at(barrelPart(0.036, 0.09, MAT.metal), 0, 0.09, -0.19),
+    at(barrelPart(0.03, 0.02, lens), 0, 0.09, -0.24),
+    at(barrelPart(0.022, 0.02, lens), 0, 0.09, 0.15),
+    at(box(0.02, 0.04, 0.04, MAT.steel), 0, 0.057, -0.08),
+    at(box(0.02, 0.04, 0.04, MAT.steel), 0, 0.057, 0.08),
+    boltHandle,
+    rightArm,
+    leftArm,
+  );
+  const muzzle = at(new THREE.Object3D(), 0, 0.02, -0.96);
+  root.add(muzzle);
+  return {
+    root, muzzle, home: { x: 0.2, y: -0.2, z: -0.4 },
+    parts: { bolt: boltHandle, boltBaseZ: boltHandle.position.z, support: { object: leftArm, baseY: leftArm.position.y } },
+  };
+}
+
 function buildFists() {
   const root = new THREE.Group();
   const hands = [];
@@ -182,10 +228,11 @@ function buildFists() {
 
 const MODEL_BUILDERS = {
   fists: buildFists, pistol: buildPistol, shotgun: buildShotgun, smg: buildSmg,
+  sniper: buildSniper,
   raygun: () => buildRaygun(makeArm),
 };
 
-/** A gun model with no first-person hands or sleeves, for the third-person wizard to hold. Null for fists. */
+/** A gun model with no first-person hands or sleeves, for the third-person cyborg to hold. Null for fists. */
 export function buildHeldModel(id) {
   if (id === 'fists') return null;
   BUILD_ARMS = false;
@@ -239,7 +286,11 @@ export class Weapons {
     // Fists (index 0) are always on key 4 and are not part of the loadout.
     this.loadout = [1, 2, 3];
 
-    this.tp = null; // the Wizard, set by main.js: third-person muzzle + flash
+    this.tp = null; // the Cyborg, set by main.js: third-person muzzle + flash
+    // Multiplayer hooks, set by main.js (null in single player):
+    this.onShot = null; // (weaponIndex, fromVector, endPointsArray) after each trigger pull of a hitscan gun
+    this.onMelee = null; // (usesFists) after each melee swing
+    this._shotEnds = []; // end points of this trigger pull's rays, reused
     this._createBeam(mainScene);
 
     // Aim scratch vectors (reused every shot).
@@ -424,14 +475,14 @@ export class Weapons {
     this.switchTimer = this.cfg.switchTime / 2;
   }
 
-  /** Muzzle flash on the viewmodel, and on the wizard's gun when it is visible. */
+  /** Muzzle flash on the viewmodel, and on the cyborg's gun when it is visible. */
   _flashFire(size, intensity) {
     this.flash.fire(size, intensity);
     if (this.tp && this.player.thirdPersonVisible) this.tp.flash.fire(size, intensity);
   }
 
   _equip(index) {
-    if (this.index >= 0) this.models[this.index].root.visible = false;
+    for (const other of this.models) other.root.visible = false; // all of them: reset() leaves index at -1
     this.index = index;
     const model = this.models[index];
     model.root.visible = true;
@@ -485,12 +536,12 @@ export class Weapons {
     if (input.ammoPressed && !this.switching) this.toggleAmmo();
 
     // Aim down sights: hold to aim. Aiming drops the sprint (like firing does) and is
-    // not possible while switching, reloading, sliding, or with fists equipped.
+    // not possible while switching, reloading, sprinting, or with fists equipped.
     const gun = this.current.cfg;
     this.enemies.aimThreat = !gun.melee; // bots dodge when you aim a gun at them
     const canAim = !gun.melee && !this.switching;
     if (input.aimHeld && canAim && this.player.sprinting) this.player.cancelSprint();
-    this.aiming = input.aimHeld && canAim && !this.reloading && !this.player.sprinting && !this.player.sliding;
+    this.aiming = input.aimHeld && canAim && !this.reloading && !this.player.sprinting;
 
     if (this.pumpTimer > 0) {
       this.pumpTimer -= dt;
@@ -738,7 +789,7 @@ export class Weapons {
     // Muzzle position: viewmodel space -> world space (the viewmodel camera mirrors the main one's orientation).
     let origin = cam.position;
     if (this.tp && this.player.thirdPersonVisible) {
-      this.tp.muzzleWorld(this._muzzleW); // beam leaves the wizard's gun, aimed through the crosshair
+      this.tp.muzzleWorld(this._muzzleW); // beam leaves the cyborg's gun, aimed through the crosshair
       this.player.getAim(this._origin, this._fwd, this._right, this._up);
       origin = this._origin;
     } else {
@@ -909,7 +960,7 @@ export class Weapons {
     this.audio.shoot(c.id);
 
     if (this.tp && player.thirdPersonVisible) {
-      this.tp.muzzleWorld(this._from); // shots leave the wizard's gun
+      this.tp.muzzleWorld(this._from); // shots leave the cyborg's gun
     } else {
       this._from.copy(this._origin)
         .addScaledVector(this._fwd, 0.7)
@@ -920,9 +971,11 @@ export class Weapons {
     this.worldLight.intensity = c.worldLight;
     this.worldLightTime = 0.05;
 
-    // Spread widens when moving or airborne.
-    const ads = this.adsBlend;
-    const spread = c.spread * (1 + (player.speed * 0.05 + (player.grounded ? 0 : 1.5)) * (1 - ads)) * (1 - 0.5 * ads);
+    // Spread widens when moving or airborne. adsSpreadCut = share of the spread the sights remove (0.5 default).
+    // adsAccurateAt: the sights count as fully on by this fraction of the aim blend, so a quick
+    // scope (aim and fire straight away) is already accurate while the gun is still rising.
+    const ads = c.adsAccurateAt ? Math.min(1, this.adsBlend / c.adsAccurateAt) : this.adsBlend;
+    const spread = c.spread * (1 + (player.speed * 0.05 + (player.grounded ? 0 : 1.5)) * (1 - ads)) * (1 - (c.adsSpreadCut ?? 0.5) * ads);
     this.hitCount = 0;
     for (let i = 0; i < c.pellets; i++) {
       const radius = Math.sqrt(Math.random()) * spread; // uniform over a disc
@@ -934,8 +987,12 @@ export class Weapons {
       this._shootRay(c);
     }
     this._applyHits(c);
+    if (this.onShot) {
+      this.onShot(this.index, this._from, this._shotEnds);
+      this._shotEnds.length = 0;
+    }
 
-    if (c.id === 'shotgun') this.pumpTimer = c.interval * 0.45;
+    if (c.id === 'shotgun' || c.boltAction) this.pumpTimer = c.interval * 0.45;
   }
 
   _shootRay(c) {
@@ -955,6 +1012,7 @@ export class Weapons {
     }
     this._to.copy(origin).addScaledVector(dir, endT);
     this.fx.tracers.spawn(this._from, this._to, c.tracerColor);
+    if (this.onShot) this._shotEnds.push([this._to.x, this._to.y, this._to.z]);
   }
 
   _damageFalloff(c, distance) {
@@ -1059,6 +1117,7 @@ export class Weapons {
   }
 
   _startMeleeAnim(usesFists) {
+    if (this.onMelee) this.onMelee(usesFists);
     if (usesFists) {
       this.punchT[this.nextHand] = 0;
       this.nextHand = 1 - this.nextHand; // alternate hands
@@ -1081,6 +1140,7 @@ export class Weapons {
   /** Per rendered frame: all viewmodel animation, summed into the anchor transform. */
   updateView(dt, time) {
     const player = this.player;
+    if (!player.alive) this.aiming = false; // update() is frozen while dead: lower the sights by hand
     const model = this.models[this.index];
     const w = this.current;
     const c = w.cfg;
@@ -1112,7 +1172,7 @@ export class Weapons {
 
     // ADS: blend the whole pose from the hip position to the per-gun sight position, and
     // damp bob / sway / breathing so the sights stay put on the target.
-    this.adsBlend = damp(this.adsBlend, this.aiming ? 1 : 0, this.cfg.adsSpeed, dt);
+    this.adsBlend = damp(this.adsBlend, this.aiming ? 1 : 0, c.adsSpeed ?? this.cfg.adsSpeed, dt);
     const ads = this.adsBlend;
     const aim = c.ads || home; // fists have no sights
     const loose = 1 - 0.85 * ads;
@@ -1127,7 +1187,7 @@ export class Weapons {
     let z = home.z + (aim.z - home.z) * ads + k.z * (1 - 0.5 * ads) + 0.04 * this.sprintBlend;
     let rx = k.r * (1 - 0.4 * ads) - 0.15 * this.sprintBlend;
     let ry = 0.55 * this.sprintBlend;
-    let rz = -0.15 * this.sprintBlend - 0.25 * this.slideBlend + this.sway.x * 2;
+    let rz = -0.15 * this.sprintBlend - 0.25 * this.slideBlend * (1 - ads) + this.sway.x * 2;
 
     let supportDrop = 0; // how far the off-hand dips (mag changes, loading shells)
 
@@ -1165,6 +1225,23 @@ export class Weapons {
       const p = 1 - this.cooldown / c.interval;
       const stroke = p > 0.3 && p < 0.8 ? Math.sin(Math.PI * ((p - 0.3) / 0.5)) : 0;
       model.parts.pump.position.z = model.parts.pumpBaseZ + 0.13 * stroke;
+    }
+
+    // Bolt-action cycle after each shot: the handle lifts and slides back, then returns.
+    if (model.parts.bolt) {
+      const p = 1 - this.cooldown / c.interval;
+      const stroke = p > 0.25 && p < 0.85 ? Math.sin(Math.PI * ((p - 0.25) / 0.6)) : 0;
+      model.parts.bolt.position.z = model.parts.boltBaseZ + 0.09 * stroke;
+      model.parts.bolt.rotation.z = -0.9 * stroke;
+    }
+
+    // Looking through a scope: the gun itself is out of the picture.
+    if (c.scope) {
+      const scoped = !player.thirdPersonVisible && ads > 0.9;
+      model.root.visible = !scoped;
+      this.hud.setScope(player.thirdPersonVisible ? 0 : ads);
+    } else {
+      this.hud.setScope(0);
     }
 
     // Weapon switch: lower and tilt away.
@@ -1251,7 +1328,7 @@ export class Weapons {
 
   /** Draw the viewmodel on top of whatever is already in the framebuffer. */
   render(renderer) {
-    if (this.player.thirdPersonVisible) return; // the wizard holds the gun instead
+    if (this.player.thirdPersonVisible || !this.player.alive) return; // the cyborg holds the gun; the dead hold nothing // the cyborg holds the gun instead
     renderer.clearDepth();
     renderer.render(this.vmScene, this.vmCamera);
   }

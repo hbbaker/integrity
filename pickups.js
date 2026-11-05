@@ -56,25 +56,48 @@ export class Pickups {
         const mesh = build();
         mesh.visible = false;
         scene.add(mesh);
-        this.items.push({ kind, mesh, active: false, age: 0, x: 0, z: 0, y: 0 });
+        this.items.push({ kind, mesh, active: false, age: 0, life: this.cfg.lifetime, netId: 0, x: 0, z: 0, y: 0 });
       }
     }
     this.onCollect = null; // (kind) => boolean, true if the pickup was actually used
+    this.onCollected = null; // (item) => void, after a pickup was used (multiplayer tells the others)
   }
 
   /** Maybe drop something where a bot died. `needsHealth` biases toward health. */
   maybeDrop(x, y, z, needsHealth) {
     if (Math.random() > this.cfg.dropChance) return;
     const kind = Math.random() < (needsHealth ? this.cfg.healthBias : 0.3) ? KIND_HEALTH : KIND_AMMO;
+    this.place(kind, x, y, z);
+  }
+
+  /**
+   * Put a pickup in the world. `netId` names it across the network (0 = local only);
+   * `life` overrides how long it lasts. Returns false when the pool for that kind is full.
+   */
+  place(kind, x, y, z, netId = 0, life = this.cfg.lifetime) {
     const item = this.items.find((i) => !i.active && i.kind === kind);
-    if (!item) return;
+    if (!item) return false;
     item.active = true;
     item.age = 0;
+    item.life = life;
+    item.netId = netId;
     item.x = x;
     item.y = y;
     item.z = z;
     item.mesh.visible = true;
     item.mesh.position.set(x, y + 0.5, z);
+    return true;
+  }
+
+  /** Someone else picked this one up. */
+  removeById(netId) {
+    const item = this.items.find((i) => i.active && i.netId === netId);
+    if (item) this._hide(item);
+  }
+
+  /** Positions of everything lying around, for choosing where the next one goes. */
+  positions() {
+    return this.items.filter((i) => i.active).map((i) => ({ x: i.x, z: i.z }));
   }
 
   update(dt, playerPos) {
@@ -82,7 +105,7 @@ export class Pickups {
     for (const item of this.items) {
       if (!item.active) continue;
       item.age += dt;
-      if (item.age > this.cfg.lifetime) {
+      if (item.age > item.life) {
         this._hide(item);
         continue;
       }
@@ -90,6 +113,7 @@ export class Pickups {
       const dz = playerPos.z - item.z;
       if (dx * dx + dz * dz < r2 && Math.abs(playerPos.y - item.y) < 2 && this.onCollect(item.kind)) {
         this._hide(item);
+        if (this.onCollected) this.onCollected(item);
       }
     }
   }
@@ -100,7 +124,7 @@ export class Pickups {
       if (!item.active) continue;
       item.mesh.rotation.y = time * 2.5 + item.x;
       item.mesh.position.y = item.y + 0.55 + Math.sin(time * 3 + item.z) * 0.1;
-      const remaining = this.cfg.lifetime - item.age;
+      const remaining = item.life - item.age;
       item.mesh.visible = remaining > 4 || Math.floor(time * 8) % 2 === 0;
     }
   }

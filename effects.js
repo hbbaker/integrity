@@ -566,7 +566,7 @@ export class MuzzleFlash {
 /** All pooled world-space effects, bundled so modules receive one object. */
 export function createEffects(scene) {
   const particles = new ParticlePool(scene);
-  const tracers = new TracerPool(scene);
+  const tracers = new TracerPool(scene, 48);
   const bubbles = new BubblePool(scene);
   return {
     particles,

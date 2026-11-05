@@ -1,5 +1,11 @@
 import * as THREE from 'three';
 
+const HALF_DEGREES_TO_RADIANS = Math.PI / 360; // fov is in degrees; the maths needs half the angle in radians
+const LEAN_STEPS = [1, 0.5]; // full lean, then half a lean, before giving up
+const DEAD_EYE_HEIGHT = 0.35; // metres above the floor, once dead
+const DEAD_ROLL = 0.6; // radians the view tilts over when dead
+const DEAD_CAMERA_SPEED = 4; // how fast the camera drops
+
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 /** Frame-rate independent exponential smoothing toward a target. */
@@ -53,15 +59,16 @@ export class Player {
 
   reset() {
     const c = this.cfg;
-    this.pos.set(0, 0, this.spawnZ ?? 22);
+    this.pos.set(this.spawnX ?? 0, this.spawnY ?? 0, this.spawnZ ?? 22);
     this.prevPos.copy(this.pos);
     this.vel.set(0, 0, 0);
-    this.yaw = 0;
+    this.yaw = this.spawnYaw ?? 0;
     this.pitch = 0;
     this.kickPitch = 0; // temporary camera recoil that recovers
     this.kickYaw = 0;
     this.shake = 0;
     this.aimBlend = 0; // 0 = hip, 1 = fully aimed; written by Weapons every frame
+    this.deadBlend = 0; // 0 = alive, 1 = the camera has dropped to the floor after dying
     this.zoom = 0; // degrees of FOV removed by aiming; written by Weapons
 
     this.health = c.maxHealth;
@@ -75,6 +82,8 @@ export class Player {
     this.sprinting = false;
     this.sprintLocked = false; // set when firing cancels a sprint; cleared on releasing Shift
     this.sliding = false;
+    this.crouching = false;
+    this.lean = 0; // -1 = fully leaned left (Q), +1 = fully leaned right (E)
     this.slideTimer = 0;
     this.slideCooldown = 0;
 
@@ -96,8 +105,13 @@ export class Player {
   /* ------------------------------- input -------------------------------- */
 
   look(dx, dy) {
+    if (!this.alive) return; // dead: the view is locked
     // Slower look while aiming: it feels like the same angular speed on a zoomed-in image.
-    const sensitivity = this.cfg.mouseSensitivity * lerp(1, this.cfg.adsSensitivity, this.aimBlend);
+    // Zoomed in, the same turn moves the picture further across the screen. Scaling by the ratio
+    // of the view's half-width keeps a drag across the screen the same size at any zoom, which is
+    // what makes drag aiming with a scope predictable. this.zoom is already blended with the aim.
+    const zoomScale = Math.tan((this.cfg.fov - this.zoom) * HALF_DEGREES_TO_RADIANS) / Math.tan(this.cfg.fov * HALF_DEGREES_TO_RADIANS);
+    const sensitivity = this.cfg.mouseSensitivity * zoomScale * lerp(1, this.cfg.adsSensitivity, this.aimBlend);
     this.yaw -= dx * sensitivity;
     this.pitch = clamp(this.pitch - dy * sensitivity, -1.55, 1.55);
   }
@@ -115,7 +129,7 @@ export class Player {
     this.pitch = clamp(this.pitch + climb, -1.55, 1.55);
   }
 
-  /** True once the camera has pulled far enough back that the wizard (not the viewmodel) should be shown. */
+  /** True once the camera has pulled far enough back that the cyborg (not the viewmodel) should be shown. */
   get thirdPersonVisible() {
     return this.tpBlend > 0.35;
   }
@@ -153,10 +167,12 @@ export class Player {
     forward.set(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp);
     right.set(Math.cos(yaw), 0, -Math.sin(yaw));
     up.crossVectors(right, forward);
-    origin.set(this.pos.x, this.pos.y + this.cfg.eyeHeight, this.pos.z);
+    // Shots start where the eye really is: lower when crouched or sliding, shifted sideways when leaning.
+    const leanShift = this.lean * this.cfg.leanDistance;
+    origin.set(this.pos.x + right.x * leanShift, this.pos.y + this.eyeHeight, this.pos.z + right.z * leanShift);
     if (this.tpBlend > 0.001) {
-      // Third person: start the ray on the crosshair line at the wizard's depth, so shots land
-      // exactly under the crosshair and nothing between the camera and the wizard can block them.
+      // Third person: start the ray on the crosshair line at the cyborg's depth, so shots land
+      // exactly under the crosshair and nothing between the camera and the cyborg can block them.
       const dist = this._orbit(this._camA, this._pivot, forward, right, this.pos, this.tpBlend);
       origin.copy(this._camA).addScaledVector(forward, dist);
     }
@@ -221,9 +237,14 @@ export class Player {
       if (this.onSlide) this.onSlide();
     }
 
+    // --- Slide cancel: tapping sprint ends the slide and keeps the speed you have ---
+    if (this.sliding && input.sprintPressed) this.sliding = false;
+
     // --- Sprint state ---
     if (!input.sprintHeld) this.sprintLocked = false;
-    this.sprinting = input.sprintHeld && iz > 0 && !this.sprintLocked && !this.sliding;
+    this.sprinting = input.sprintHeld && iz > 0 && !this.sprintLocked && !this.sliding && !this.crouching;
+    // Crouch: hold C / Ctrl while not sprinting (pressing it while sprinting slides instead).
+    this.crouching = input.crouchHeld && !this.sprinting && !this.sliding;
 
     // --- Jump (works from the ground, during coyote time, or out of a slide) ---
     if (this.jumpBuffer > 0 && this.coyote > 0) {
@@ -250,7 +271,8 @@ export class Player {
       this.vel.z = this.slideDir.z * speed;
       if (this.slideTimer <= 0) this.sliding = false;
     } else {
-      const target = (this.sprinting ? c.sprintSpeed : c.walkSpeed) * lerp(1, c.adsSpeedMul, this.aimBlend);
+      const baseSpeed = this.sprinting ? c.sprintSpeed : this.crouching ? c.walkSpeed * c.crouchSpeedMul : c.walkSpeed;
+      const target = baseSpeed * lerp(1, c.adsSpeedMul, this.aimBlend);
       if (this.grounded) {
         const tx = hasInput ? this.wish.x * target : 0;
         const tz = hasInput ? this.wish.z * target : 0;
@@ -285,14 +307,16 @@ export class Player {
     this._integrateVertical(dt);
 
     // --- Camera feel (bob, landing dip, eye height, roll) ---
-    this.eyeHeight = damp(this.eyeHeight, this.sliding ? c.slideEyeHeight : c.eyeHeight, 14, dt);
+    const eyeTarget = this.sliding ? c.slideEyeHeight : this.crouching ? c.crouchEyeHeight : c.eyeHeight;
+    this.eyeHeight = damp(this.eyeHeight, eyeTarget, 14, dt);
+    this._updateLean(input, dt);
     const hSpeed = this.speed;
     const moving = this.grounded && !this.sliding && hSpeed > 0.8 && hasInput;
     this.bobAmt = damp(this.bobAmt, moving ? 1 : 0, 10, dt);
     if (moving) this.bobPhase += hSpeed * c.bobFreq * dt;
     const amp = this.sprinting ? c.bobAmpSprint : c.bobAmpWalk;
     const bobY = Math.sin(this.bobPhase * 2) * amp * this.bobAmt; // two dips per full cycle = two footsteps
-    this.camX = Math.cos(this.bobPhase) * amp * 0.6 * this.bobAmt;
+    this.camX = Math.cos(this.bobPhase) * amp * 0.6 * this.bobAmt + this.lean * c.leanDistance;
 
     // Landing dip is a damped spring pushed down by an impulse on landing.
     this.dipVel += (-c.dipStiffness * this.dip - c.dipDamping * this.dipVel) * dt;
@@ -300,8 +324,33 @@ export class Player {
     this.stepSmooth = damp(this.stepSmooth, 0, 12, dt);
     this.camY = this.eyeHeight + this.dip + bobY + this.stepSmooth;
 
-    const targetRoll = (this.sliding ? c.slideRoll : 0) - ix * c.leanRoll * (this.grounded ? 1 : 0.5);
+    const targetRoll = (this.sliding ? c.slideRoll * (1 - this.aimBlend) : 0) - ix * c.leanRoll * (this.grounded ? 1 : 0.5) - this.lean * c.leanTilt * (1 - 0.5 * this.aimBlend);
     this.roll = damp(this.roll, targetRoll, 10, dt);
+  }
+
+  /**
+   * Q / E lean: shift the eye (and the shots) sideways to peek round corners. The lean stops
+   * where the eye would end up inside something solid, so you cannot peek through a wall.
+   * Sprinting and sliding straighten you up.
+   */
+  _updateLean(input, dt) {
+    const side = this.sprinting || this.sliding ? 0 : (input.leanRight ? 1 : 0) - (input.leanLeft ? 1 : 0);
+    this.lean = damp(this.lean, side * this._clearLean(side), this.cfg.leanSpeed, dt);
+  }
+
+  /** How much of a full lean toward `side` (-1 left, +1 right) fits before the eye meets a solid: 1, 0.5 or 0. */
+  _clearLean(side) {
+    if (side === 0) return 0;
+    const c = this.cfg;
+    const eyeY = this.pos.y + this.eyeHeight;
+    for (const fraction of LEAN_STEPS) {
+      const reach = c.leanDistance * fraction * side;
+      const x = this.pos.x + Math.cos(this.yaw) * reach;
+      const z = this.pos.z - Math.sin(this.yaw) * reach;
+      // Only solids reaching eye level count (isBlocked looks above feetY + stepHeight): low cover can be leaned over.
+      if (!this.world.isBlocked(x, z, c.leanClearance, eyeY - c.stepHeight)) return fraction;
+    }
+    return 0;
   }
 
   _integrateVertical(dt) {
@@ -350,6 +399,10 @@ export class Player {
       lerp(this.prevPos.z, this.pos.z, alpha) - camX * sin,
     );
 
+    // Dead: the camera sinks to the floor and tilts, and stays there until you respawn.
+    this.deadBlend = damp(this.deadBlend, this.alive ? 0 : 1, DEAD_CAMERA_SPEED, dt);
+    cam.position.y -= (c.eyeHeight - DEAD_EYE_HEIGHT) * this.deadBlend;
+
     this.kickPitch *= Math.exp(-c.kickRecover * dt);
     this.kickYaw *= Math.exp(-c.kickRecover * dt);
     this.shake = Math.max(0, this.shake - dt * 3.5);
@@ -358,7 +411,7 @@ export class Player {
     cam.rotation.set(
       this.pitch + this.kickPitch + (Math.random() - 0.5) * s,
       this.yaw + this.kickYaw + (Math.random() - 0.5) * s,
-      lerp(this.prevRoll, this.roll, alpha) * (1 - blend) + (Math.random() - 0.5) * s,
+      lerp(this.prevRoll, this.roll, alpha) * (1 - blend) + DEAD_ROLL * this.deadBlend + (Math.random() - 0.5) * s,
     );
 
     if (blend > 0.001) {
@@ -379,7 +432,7 @@ export class Player {
       cam.position.lerp(this._camA, blend);
     }
 
-    const targetFov = c.fov + (this.sliding ? c.slideFovAdd : this.sprinting ? c.sprintFovAdd : 0) - this.zoom;
+    const targetFov = c.fov + (this.sliding ? c.slideFovAdd * (1 - this.aimBlend) : this.sprinting ? c.sprintFovAdd : 0) - this.zoom;
     this.fov = damp(this.fov, targetFov, c.fovLerp, dt);
     if (Math.abs(cam.fov - this.fov) > 0.01) {
       cam.fov = this.fov;

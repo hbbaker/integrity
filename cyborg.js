@@ -3,10 +3,10 @@ import { material, MuzzleFlash } from './effects.js';
 import { buildHeldModel } from './weapons.js';
 
 /*
- * The third-person character: a chunky, flat-shaded, old-school-WoW-style wizard
- * (pointy hat, big nose and beard, oversized gold-trimmed shoulder pads, blue robe).
- * Built from a handful of low-segment primitives (a few hundred triangles) and posed
- * procedurally every frame. It holds a copy of whichever gun is equipped.
+ * The third-person character: a green-and-black cybernetic robot (black plating,
+ * green armour panels, glowing green visor, chest core, joints and cable runs).
+ * Built from a handful of low-segment primitives and posed procedurally every
+ * frame. It holds a copy of whichever gun is equipped.
  *
  * Model space: feet at y = 0, facing -Z (like the guns). Yaw uses the same convention
  * as the camera, so `root.rotation.y = yaw` turns it to face a camera yaw.
@@ -22,25 +22,28 @@ const ARM_LEN = 0.62;
 const SHOULDER_X = 0.37;
 const SHOULDER_Y = 1.32;
 const GUN_SCALE = 1.25;
+const LEAN_BODY_ANGLE = 0.45; // radians the torso tips at a full lean
+const LEAN_BODY_SHIFT = 0.3; // metres the torso slides sideways at a full lean
 
 // Where each hand grips a gun, in the gun model's own space (matches the first-person arms).
 const GRIPS = {
   pistol: { right: [0.052, -0.09, 0.05], left: [-0.052, -0.11, 0.04] },
   shotgun: { right: [0.05, -0.09, 0.22], left: [0, -0.1, -0.25] },
   smg: { right: [0.052, -0.1, 0.13], left: [0, -0.07, -0.19] },
+  sniper: { right: [0.05, -0.09, 0.22], left: [0, -0.1, -0.25] },
   raygun: { right: [0.052, -0.11, 0.085], left: [0, -0.085, -0.1] },
 };
 
+const glow = (hex, intensity) => new THREE.MeshStandardMaterial({
+  color: 0x04120a, emissive: hex, emissiveIntensity: intensity, roughness: 0.4, metalness: 0.2,
+});
+
 const MAT = {
-  robe: material(0x3a47b8, { roughness: 0.9, flatShading: true }),
-  robeDark: material(0x2a2f86, { roughness: 0.9, flatShading: true }),
-  gold: material(0xe0b030, { roughness: 0.45, metalness: 0.5, flatShading: true }),
-  skin: material(0xe2b38e, { roughness: 0.85, flatShading: true }),
-  beard: material(0xe6e6e0, { roughness: 0.95, flatShading: true }),
-  hat: material(0x2c2a8c, { roughness: 0.9, flatShading: true }),
-  boot: material(0x4a2f1c, { roughness: 0.9, flatShading: true }),
-  dark: material(0x15151c, { roughness: 0.9 }),
-  cape: material(0x6a2fa8, { roughness: 0.9, flatShading: true, side: THREE.DoubleSide }),
+  black: material(0x0b0d0c, { metalness: 0.85, roughness: 0.34 }),
+  plate: material(0x1d2421, { metalness: 0.8, roughness: 0.4 }),
+  green: material(0x16a03c, { metalness: 0.55, roughness: 0.42 }), // painted armour panels
+  joint: material(0x39403d, { metalness: 0.9, roughness: 0.3 }),
+  glow: glow(0x2dff6a, 1.8), // visor, core, light strips
 };
 
 // Soft radial falloff so the blob shadow has no hard black edge.
@@ -67,20 +70,25 @@ function mesh(geometry, mat, x = 0, y = 0, z = 0) {
   return m;
 }
 
-/** An arm hanging from a shoulder pivot: stretchable sleeve, bell cuff, and a hand at the end. */
+/** An arm hanging from a shoulder pivot: a stretchable armoured limb with a glowing band, and a hand at the end. */
 function makeArm(side) {
   const pivot = new THREE.Group();
   pivot.position.set(side * SHOULDER_X, SHOULDER_Y, 0);
   pivot.rotation.order = 'YXZ';
   const sleeve = new THREE.Group(); // scaled along Y to reach a target
   sleeve.add(
-    mesh(new THREE.BoxGeometry(0.11, ARM_LEN * 0.8, 0.11), MAT.robe, 0, -ARM_LEN * 0.4, 0),
-    mesh(new THREE.CylinderGeometry(0.07, 0.115, 0.2, 6), MAT.robeDark, 0, -ARM_LEN * 0.8 + 0.02, 0), // bell cuff
-    mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 6), MAT.gold, 0, -ARM_LEN * 0.8 + 0.12, 0), // cuff trim
+    mesh(new THREE.CylinderGeometry(0.055, 0.05, ARM_LEN * 0.8, 8), MAT.black, 0, -ARM_LEN * 0.4, 0),
+    mesh(new THREE.BoxGeometry(0.11, ARM_LEN * 0.34, 0.12), MAT.green, 0, -ARM_LEN * 0.28, 0), // upper armour
+    mesh(new THREE.SphereGeometry(0.06, 8, 6), MAT.joint, 0, -ARM_LEN * 0.5, 0), // elbow
+    mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.025, 8), MAT.glow, 0, -ARM_LEN * 0.7, 0), // glowing band
+    mesh(new THREE.CylinderGeometry(0.065, 0.06, 0.18, 8), MAT.plate, 0, -ARM_LEN * 0.78, 0), // forearm guard
   );
   const hand = new THREE.Group();
   hand.position.y = -ARM_LEN;
-  hand.add(mesh(new THREE.BoxGeometry(0.1, 0.1, 0.12), MAT.skin));
+  hand.add(
+    mesh(new THREE.BoxGeometry(0.1, 0.1, 0.12), MAT.black),
+    mesh(new THREE.BoxGeometry(0.06, 0.012, 0.07), MAT.glow, 0, 0.055, 0), // knuckle light
+  );
   pivot.add(sleeve, hand);
   return { pivot, sleeve, hand };
 }
@@ -89,35 +97,18 @@ function makeLeg(side) {
   const pivot = new THREE.Group();
   pivot.position.set(side * 0.13, 0.56, 0);
   pivot.add(
-    mesh(new THREE.BoxGeometry(0.15, 0.4, 0.16), MAT.robeDark, 0, -0.2, 0),
-    mesh(new THREE.BoxGeometry(0.17, 0.2, 0.26), MAT.boot, 0, -0.46, -0.04), // boot
-    mesh(new THREE.BoxGeometry(0.18, 0.04, 0.27), MAT.gold, 0, -0.36, -0.04), // boot cuff
+    mesh(new THREE.BoxGeometry(0.15, 0.27, 0.16), MAT.black, 0, -0.13, 0), // thigh
+    mesh(new THREE.SphereGeometry(0.08, 8, 6), MAT.joint, 0, -0.28, 0), // knee
+    mesh(new THREE.BoxGeometry(0.13, 0.26, 0.15), MAT.green, 0, -0.41, 0), // shin armour
+    mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.3, 6), MAT.glow, side * 0.05, -0.29, -0.085), // piston light
+    mesh(new THREE.BoxGeometry(0.16, 0.09, 0.28), MAT.black, 0, -0.51, -0.05), // foot
+    mesh(new THREE.BoxGeometry(0.12, 0.012, 0.05), MAT.glow, 0, -0.47, -0.18), // toe light
   );
   return pivot;
 }
 
-function makeHat() {
-  const hat = new THREE.Group();
-  hat.add(
-    mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.03, 8), MAT.hat, 0, 0.12, 0), // wide brim
-    mesh(new THREE.CylinderGeometry(0.2, 0.23, 0.07, 7), MAT.gold, 0, 0.17, 0), // band
-    mesh(new THREE.CylinderGeometry(0.12, 0.22, 0.34, 7), MAT.hat, 0, 0.34, 0),
-  );
-  const upper = new THREE.Group(); // the crooked tip
-  upper.position.set(0, 0.5, 0);
-  upper.rotation.z = -0.35;
-  upper.add(mesh(new THREE.CylinderGeometry(0.05, 0.12, 0.34, 6), MAT.hat, 0, 0.15, 0));
-  const tip = new THREE.Group();
-  tip.position.set(0, 0.32, 0);
-  tip.rotation.z = -0.55;
-  tip.add(mesh(new THREE.ConeGeometry(0.05, 0.25, 5), MAT.hat, 0, 0.1, 0));
-  upper.add(tip);
-  hat.add(upper, mesh(new THREE.BoxGeometry(0.07, 0.07, 0.02), MAT.gold, 0, 0.17, -0.225)); // buckle
-  return hat;
-}
-
-export class Wizard {
-  constructor({ scene, player, weapons }) {
+export class Cyborg {
+  constructor({ scene, player, weapons, flashLight = true }) {
     this.player = player;
     this.weapons = weapons;
     this.group = new THREE.Group();
@@ -140,48 +131,48 @@ export class Wizard {
     this.legR = makeLeg(1);
     this.hips.add(
       this.legL, this.legR,
-      mesh(new THREE.CylinderGeometry(0.27, 0.43, 0.78, 7), MAT.robe, 0, 0.52, 0), // robe skirt
-      mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.06, 7), MAT.gold, 0, 0.16, 0), // hem trim
+      mesh(new THREE.BoxGeometry(0.42, 0.2, 0.28), MAT.black, 0, 0.62, 0), // pelvis
+      mesh(new THREE.BoxGeometry(0.44, 0.03, 0.3), MAT.glow, 0, 0.72, 0), // belt light
+      mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.22, 8), MAT.joint, 0, 0.8, 0), // waist
     );
 
     this.torso = new THREE.Group();
     this.torso.position.y = 0.9;
     this.hips.add(this.torso);
+    const core = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 12), MAT.glow, 0, 0.32, -0.19); // chest core
+    core.rotation.x = Math.PI / 2; // the disc faces forward
     this.torso.add(
-      mesh(new THREE.CylinderGeometry(0.27, 0.3, 0.5, 7), MAT.robe, 0, 0.25, 0),
-      mesh(new THREE.CylinderGeometry(0.315, 0.315, 0.08, 7), MAT.gold, 0, 0.02, 0), // belt
-      mesh(new THREE.BoxGeometry(0.1, 0.1, 0.03), MAT.gold, 0, 0.02, -0.3), // belt buckle
-      mesh(new THREE.CylinderGeometry(0.2, 0.28, 0.1, 7), MAT.robeDark, 0, 0.5, 0), // collar
+      mesh(new THREE.BoxGeometry(0.54, 0.5, 0.3), MAT.black, 0, 0.27, 0), // chest
+      mesh(new THREE.BoxGeometry(0.42, 0.32, 0.05), MAT.green, 0, 0.3, -0.16), // front armour plate
+      core,
+      mesh(new THREE.BoxGeometry(0.3, 0.08, 0.2), MAT.plate, 0, 0.55, 0), // collar
     );
 
-    // Short cape that sways with movement.
-    this.cape = new THREE.Group();
-    this.cape.position.set(0, 0.5, 0.2);
-    this.cape.add(mesh(new THREE.BoxGeometry(0.5, 0.75, 0.03), MAT.cape, 0, -0.37, 0.02));
-    this.torso.add(this.cape);
+    // Back pack with glowing vents; it tilts with movement.
+    this.pack = new THREE.Group();
+    this.pack.position.set(0, 0.35, 0.2);
+    this.pack.add(
+      mesh(new THREE.BoxGeometry(0.34, 0.4, 0.12), MAT.plate, 0, 0, 0.04),
+      mesh(new THREE.BoxGeometry(0.26, 0.03, 0.02), MAT.glow, 0, 0.1, 0.11),
+      mesh(new THREE.BoxGeometry(0.26, 0.03, 0.02), MAT.glow, 0, 0.02, 0.11),
+      mesh(new THREE.BoxGeometry(0.26, 0.03, 0.02), MAT.glow, 0, -0.06, 0.11),
+    );
+    this.torso.add(this.pack);
 
-    // Head (pivot at the neck).
+    // Head (pivot at the neck): boxy skull, glowing visor, side sensors and an antenna.
     this.head = new THREE.Group();
     this.head.position.y = 0.62;
     this.torso.add(this.head);
-    const skull = mesh(new THREE.IcosahedronGeometry(0.19, 0), MAT.skin, 0, 0.1, 0);
-    skull.scale.set(1, 1.1, 1);
-    const nose = mesh(new THREE.ConeGeometry(0.045, 0.16, 4), MAT.skin, 0, 0.08, -0.22);
-    nose.rotation.x = -Math.PI / 2;
-    const beard = mesh(new THREE.ConeGeometry(0.16, 0.55, 6), MAT.beard, 0, -0.18, -0.1);
-    beard.rotation.x = Math.PI;
     this.head.add(
-      skull, nose, beard,
-      mesh(new THREE.BoxGeometry(0.05, 0.04, 0.02), MAT.dark, -0.075, 0.14, -0.17), // eyes
-      mesh(new THREE.BoxGeometry(0.05, 0.04, 0.02), MAT.dark, 0.075, 0.14, -0.17),
-      mesh(new THREE.BoxGeometry(0.09, 0.03, 0.04), MAT.beard, -0.075, 0.19, -0.17), // bushy brows
-      mesh(new THREE.BoxGeometry(0.09, 0.03, 0.04), MAT.beard, 0.075, 0.19, -0.17),
-      mesh(new THREE.BoxGeometry(0.2, 0.06, 0.06), MAT.beard, 0, 0.0, -0.17), // moustache
+      mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 8), MAT.joint, 0, -0.02, 0), // neck
+      mesh(new THREE.BoxGeometry(0.3, 0.27, 0.3), MAT.black, 0, 0.14, 0), // skull
+      mesh(new THREE.BoxGeometry(0.31, 0.06, 0.31), MAT.green, 0, 0.29, 0), // crown plate
+      mesh(new THREE.BoxGeometry(0.24, 0.07, 0.02), MAT.glow, 0, 0.16, -0.155), // visor
+      mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05, 8), MAT.joint, -0.17, 0.14, 0).rotateZ(Math.PI / 2), // ears
+      mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05, 8), MAT.joint, 0.17, 0.14, 0).rotateZ(Math.PI / 2),
+      mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.22, 6), MAT.joint, 0.1, 0.4, 0.06), // antenna
+      mesh(new THREE.SphereGeometry(0.02, 8, 6), MAT.glow, 0.1, 0.52, 0.06),
     );
-    const hat = makeHat();
-    hat.position.y = 0.2;
-    hat.rotation.x = -0.12; // tilted back a touch
-    this.head.add(hat);
 
     // Aim rig: both arms (and the gun) pitch together around the shoulders.
     this.rig = new THREE.Group();
@@ -195,12 +186,12 @@ export class Wizard {
       arm.pivot.position.y = 0;
       this.rig.add(arm.pivot);
     }
-    for (const side of [-1, 1]) { // oversized WoW shoulder pads
-      const pad = mesh(new THREE.OctahedronGeometry(0.2, 0), MAT.robeDark, side * (SHOULDER_X + 0.02), SHOULDER_Y - 0.9 + 0.06, 0);
-      pad.scale.set(1.1, 0.65, 1.2);
-      const trim = mesh(new THREE.TorusGeometry(0.17, 0.025, 4, 6), MAT.gold, side * (SHOULDER_X + 0.02), SHOULDER_Y - 0.9 + 0.1, 0);
-      trim.rotation.x = Math.PI / 2;
-      this.torso.add(pad, trim);
+    for (const side of [-1, 1]) { // shoulder joints with a glowing ring
+      const pad = mesh(new THREE.SphereGeometry(0.11, 10, 8), MAT.joint, side * (SHOULDER_X + 0.02), SHOULDER_Y - 0.9 + 0.04, 0);
+      pad.scale.set(1.15, 1, 1.1);
+      const ring = mesh(new THREE.TorusGeometry(0.115, 0.012, 6, 14), MAT.glow, side * (SHOULDER_X + 0.02), SHOULDER_Y - 0.9 + 0.04, 0);
+      ring.rotation.y = Math.PI / 2;
+      this.torso.add(pad, ring);
     }
 
     // Gun in the right hand: one copy per weapon, only the equipped one shown.
@@ -223,6 +214,7 @@ export class Wizard {
       return { id: cfg.id, model, holder, leftGrip };
     });
     this.flash = new MuzzleFlash();
+    if (!flashLight) this.flash.group.remove(this.flash.light); // many remote players: no extra scene lights
     this.flashHost = null;
 
     this._v = new THREE.Vector3();
@@ -317,16 +309,23 @@ export class Wizard {
       legL = -1.25;
       legR = -0.95;
       lean = 0.5;
+    } else if (player.crouching && grounded) { // crouch: hips down, knees forward, a touch of stride when moving
+      hipY = -0.3;
+      legL = -0.85 + swing * 0.3;
+      legR = -0.65 - swing * 0.3;
+      lean = -0.12;
     }
     this.hips.position.y = damp(this.hips.position.y, hipY, 16, dt);
     this.legL.rotation.x = legL;
     this.legR.rotation.x = legR;
-    this.torso.rotation.set(lean, Math.sin(this.phase) * 0.12 * Math.min(1, run) * (1 - this.aimW), 0);
+    const sideLean = -(player.lean ?? 0) * LEAN_BODY_ANGLE; // Q / E: the upper body tips toward the lean
+    this.torso.rotation.set(lean, Math.sin(this.phase) * 0.12 * Math.min(1, run) * (1 - this.aimW), sideLean);
+    this.torso.position.x = (player.lean ?? 0) * LEAN_BODY_SHIFT;
     const breathe = Math.sin(time * 1.8) * 0.012;
     this.torso.position.y = 0.9 + breathe;
     this.head.rotation.x = -clamp(player.pitch, -0.8, 0.8) * 0.5 - lean * 0.6;
     this.head.rotation.y = clamp(shortest(player.yaw - this.bodyYaw), -0.7, 0.7) * 0.6 * (1 - this.aimW);
-    this.cape.rotation.x = 0.1 + Math.min(1, run) * 0.5 + (player.sliding ? 0.5 : 0) + (grounded ? 0 : 0.4) + Math.sin(time * 3 + this.phase * 0.5) * 0.04;
+    this.pack.rotation.x = Math.min(1, run) * 0.08 + (player.sliding ? 0.1 : 0) + (grounded ? 0 : 0.1);
 
     // --- Arms ---
     const A = this.armL;

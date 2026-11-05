@@ -91,6 +91,44 @@
   #hitmarker.pop { animation: hm-pop .24s ease-out; }
   @keyframes hm-pop { 0% { opacity: 1; transform: scale(1.7); } 100% { opacity: 0; transform: scale(.9); } }
 
+  /* ---------- multiplayer: menu, scoreboard, kill feed ---------- */
+  #overlay-multiplayer { display: none; cursor: default; }
+  #overlay-multiplayer h2 { animation: none; }
+  .mp-card { width: min(560px, 92vw); padding: 18px 28px 22px; display: flex; flex-direction: column; gap: 10px; text-align: left; font-size: 18px; }
+  .mp-card label { font-size: 20px; }
+  #mp-name { font: inherit; font-size: 34px; font-style: italic; text-transform: none; padding: 4px 12px; border: 4px solid var(--ink); background: #fff; color: var(--ink); user-select: text; outline: none; }
+  #mp-name:focus { border-color: var(--red); }
+  #mp-status { font-size: 16px; min-height: 22px; }
+  #mp-error { color: var(--red); font-size: 20px; min-height: 26px; }
+  #mp-players { margin: 0; padding: 0; list-style: none; font-size: 20px; min-height: 28px; }
+  #mp-players li { padding: 1px 0; }
+  #mp-players li.me { color: var(--red); }
+  #mp-join[disabled] { opacity: .45; cursor: not-allowed; filter: grayscale(.6); }
+  #scoreboard { display: none; position: absolute; left: 50%; top: 18%; translate: -50% 0; min-width: min(560px, 90vw); padding: 14px 22px 18px; }
+  #scoreboard h3 { margin: 0 0 8px; font-size: 26px; display: flex; justify-content: space-between; }
+  #scoreboard table { width: 100%; border-collapse: collapse; font-size: 22px; }
+  #scoreboard th { text-align: right; font-size: 15px; opacity: .7; }
+  #scoreboard th:nth-child(2), #scoreboard td:nth-child(2) { text-align: left; }
+  #scoreboard th:first-child, #scoreboard td:first-child { text-align: left; width: 2em; }
+  #scoreboard td { text-align: right; padding: 3px 0; border-top: 2px solid rgba(0, 0, 0, .25); }
+  #scoreboard tr.me td { color: var(--red); }
+  #mini-board { display: none; position: absolute; left: 28px; top: 74px; font-size: 20px; color: #fff; -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; line-height: 1.35; white-space: pre; }
+  #mini-board .me { color: var(--yellow); }
+  #kill-feed { position: absolute; right: 24px; top: 78px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  #kill-feed div { font-size: 22px; color: #fff; -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; animation: feed-in .2s ease-out; }
+  #kill-feed div.mine { color: var(--yellow); }
+  @keyframes feed-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+  #respawn { display: none; position: absolute; left: 50%; top: 40%; translate: -50% 0; font-size: 54px; color: var(--red); -webkit-text-stroke: 11px var(--ink); paint-order: stroke fill; text-align: center; white-space: nowrap; }
+  #ping { display: none; position: absolute; left: 50%; bottom: 8px; translate: -50% 0; font-size: 14px; color: #fff; -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; }
+
+  /* ---------- sniper scope ---------- */
+  #scope { position: absolute; inset: 0; opacity: 0; pointer-events: none;
+    background: radial-gradient(circle at center, transparent 0, transparent 38vmin, #000 38.4vmin); }
+  #scope::before, #scope::after { content: ''; position: absolute; background: #000; }
+  #scope::before { left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; opacity: .8; }
+  #scope::after { top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; opacity: .8; }
+  #scope i { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: var(--red, #e3242b); }
+
   /* ---------- vignette, damage numbers, banner ---------- */
   #vignette { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 42%, rgba(227, 36, 43, .9) 100%); }
   #damage-numbers { position: absolute; inset: 0; overflow: hidden; }
@@ -166,6 +204,12 @@
 
   <div id="banner"></div>
 
+  <div id="mini-board"></div>
+  <div id="kill-feed"></div>
+  <div id="respawn"></div>
+  <div id="ping"></div>
+  <div id="scoreboard" class="panel"></div>
+  <div id="scope"><i></i></div>
   <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="dot"></i></div>
   <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
 
@@ -194,6 +238,7 @@
   <div id="mode-buttons" class="btn-row">
     <button id="mode-sandbox" class="panel menu-btn">SANDBOX<small>OPEN WORLD · NO ENEMIES</small></button>
     <button id="mode-waves" class="panel menu-btn">WAVE GAME<small>SURVIVE THE BOTS</small></button>
+    <button id="mode-multiplayer" class="panel menu-btn">MULTIPLAYER<small>DEATHMATCH ON YOUR NETWORK</small></button>
   </div>
   <div id="pause-buttons" class="btn-row" style="display:none">
     <button id="start-resume" class="panel menu-btn">RESUME</button>
@@ -202,8 +247,25 @@
   <div class="panel keys">
     WASD move &nbsp;·&nbsp; MOUSE look &nbsp;·&nbsp; SHIFT sprint &nbsp;·&nbsp; SPACE jump<br>
     1-3 weapon slots &nbsp;·&nbsp; 4 fists &nbsp;·&nbsp; I inventory<br>
-    C / CTRL slide (while sprinting) &nbsp;·&nbsp; LMB fire &nbsp;·&nbsp; RMB aim &nbsp;·&nbsp; R reload &nbsp;·&nbsp; V melee<br>
-    T first / third person &nbsp;·&nbsp; WHEEL cycle weapons &nbsp;·&nbsp; TAB shotgun ammo (needs reload) &nbsp;·&nbsp; M mute
+    C / CTRL crouch (hold) or slide (while sprinting) &nbsp;·&nbsp; Q / E lean &nbsp;·&nbsp; LMB fire &nbsp;·&nbsp; RMB aim &nbsp;·&nbsp; R reload &nbsp;·&nbsp; F melee<br>
+    T first / third person &nbsp;·&nbsp; G scoreboard (multiplayer) &nbsp;·&nbsp; WHEEL cycle weapons &nbsp;·&nbsp; TAB shotgun ammo (needs reload) &nbsp;·&nbsp; M mute
+  </div>
+</div>
+
+<div id="overlay-multiplayer" class="overlay">
+  <h1>MULTIPLAYER</h1>
+  <h2>DEATHMATCH</h2>
+  <div class="panel mp-card">
+    <label for="mp-name">USERNAME</label>
+    <input id="mp-name" type="text" maxlength="16" autocomplete="off" spellcheck="false">
+    <div id="mp-error"></div>
+    <div>IN THE LOBBY</div>
+    <ul id="mp-players"></ul>
+    <div id="mp-status"></div>
+  </div>
+  <div class="btn-row">
+    <button id="mp-join" class="panel menu-btn" disabled>JOIN GAME</button>
+    <button id="mp-back" class="panel menu-btn">BACK</button>
   </div>
 </div>
 

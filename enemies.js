@@ -40,9 +40,17 @@ const HIT_LINES = ['PLEASE HOLD', 'YOUR CALL IS IMPORTANT', 'RESTARTING...'];
 const KILL_LINES = ['SERVICE INTERRUPTED', 'RESTARTING...', 'PLEASE HOLD'];
 
 /** Hit volumes in model space (times scale). `drop` is how far each sinks when fully crouched. */
-const HEAD = { y: 1.54, r: 0.19, drop: 0.55 }; // crit zone
-const TORSO = { y: 1.2, r: 0.3, drop: 0.42 };
-const LEGS = { y: 0.5, r: 0.28, drop: 0.2 };
+const HEAD = { y: 1.54, r: 0.23, drop: 0.55 }; // crit zone; a little bigger than the drawn head so quick shots land
+const TORSO = { y: 1.2, r: 0.36, drop: 0.42 }; // covers the arms and shoulders too
+const LEGS = { y: 0.52, r: 0.33, drop: 0.2 };
+
+/**
+ * Aim forgiveness: every hit volume grows with distance along the ray, because the same
+ * angular mistake misses by more metres the further away you are. At 50 m a volume is about
+ * 0.3 m fatter; the growth stops at AIM_TOLERANCE_MAX so very long shots stay honest.
+ */
+export const AIM_TOLERANCE = 0.006; // metres of growth per metre of distance
+const AIM_TOLERANCE_MAX = 0.35; // metres
 
 /** Capsule hanging DOWN from its pivot (top at y=0), cached by dimensions. Rounded ends hide joint gaps. */
 const limbCache = new Map();
@@ -101,13 +109,14 @@ function getSharedMaterials() {
   }
 }
 
-function raySphere(o, d, cx, cy, cz, r) {
+export function raySphere(o, d, cx, cy, cz, r) {
   const lx = cx - o.x;
   const ly = cy - o.y;
   const lz = cz - o.z;
   const tca = lx * d.x + ly * d.y + lz * d.z;
   const d2 = lx * lx + ly * ly + lz * lz - tca * tca;
-  const r2 = r * r;
+  const grown = r + Math.min(Math.max(tca, 0) * AIM_TOLERANCE, AIM_TOLERANCE_MAX);
+  const r2 = grown * grown;
   if (d2 > r2) return -1;
   const thc = Math.sqrt(r2 - d2);
   const t = tca - thc;

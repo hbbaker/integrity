@@ -8,8 +8,14 @@ import { Enemies } from './enemies.js';
 import { Pickups } from './pickups.js';
 import { Hud } from './hud.js';
 import { Inventory } from './inventory.js';
-import { Wizard } from './wizard.js';
+import { Cyborg } from './cyborg.js';
 import { AudioFX } from './audio.js';
+import { NetClient, NET_STATUS } from './net.js';
+import { RemotePlayers } from './remote-players.js';
+import { Targets } from './targets.js';
+import { Deathmatch } from './deathmatch.js';
+import { MultiplayerMenu } from './multiplayer-menu.js';
+import { Scoreboard } from './scoreboard.js';
 
 /* ========================================================================== *
  *  CONFIG: every tuning value lives here. Distances are metres, times are
@@ -31,6 +37,12 @@ const CONFIG = {
     radius: 0.4,
     eyeHeight: 1.65,
     slideEyeHeight: 0.85,
+    crouchEyeHeight: 1.05, // hold C / Ctrl while not sprinting
+    crouchSpeedMul: 0.55,
+    leanDistance: 0.45, // metres the eye shifts sideways at a full lean (Q / E)
+    leanTilt: 0.2, // radians the view rolls at a full lean
+    leanSpeed: 12, // how fast the lean moves in and out
+    leanClearance: 0.18, // how much room the eye needs, so a lean stops at walls
     stepHeight: 0.35, // ledges/ramps lower than this are walked up without jumping
     snapDown: 0.2, // how far we stay glued to a downward ramp
 
@@ -59,7 +71,7 @@ const CONFIG = {
     fovLerp: 9,
     mouseSensitivity: 0.0022,
     adsSpeedMul: 0.6, // walk speed multiplier while aiming down sights
-    adsSensitivity: 0.65, // look sensitivity multiplier while aiming
+    adsSensitivity: 0.9, // extra look-speed multiplier while aiming, on top of the zoom scaling (1 = the crosshair crosses the screen at the same speed)
 
     bobFreq: 1.3, // radians of bob per metre travelled
     bobAmpWalk: 0.03,
@@ -140,6 +152,15 @@ const CONFIG = {
         flashTint: 0x55ffb0, flashSize: 0.3, worldLight: 0, heat: 0,
         ads: { x: 0, y: -0.088, z: -0.3, fovDrop: 10 },
       },
+      {
+        // Bolt-action sniper. `scope` hides the gun and draws a scope overlay while aiming; fovDrop is the zoom.
+        // It is very accurate when aimed, but the hip shot wanders (spread).
+        id: 'sniper', name: 'SNIPER', auto: false, boltAction: true, scope: true, damage: 96, interval: 1.35,
+        mag: 5, reserve: 20, maxReserve: 40, reloadTime: 2.4, spread: 0.05, adsSpreadCut: 0.99, adsAccurateAt: 0.55, adsSpeed: 24, pellets: 1, range: 250, critMul: 2.5,
+        knockback: 16, stun: 0.5, camKick: 0.07, camYaw: 0.01, climb: 0.012, kickZ: 0.06, kickRot: 0.12,
+        flashSize: 0.5, worldLight: 40, heat: 16, tracerColor: 0xbfe8ff,
+        ads: { x: 0, y: -0.09, z: -0.25, fovDrop: 52 },
+      },
     ],
   },
 
@@ -201,14 +222,30 @@ const CONFIG = {
     intermission: 3.5,
   },
 
+  // LAN deathmatch (see deathmatch.js)
+  multiplayer: {
+    sendHz: 20, // state updates per second
+    renderDelay: 0.1, // seconds: other players are drawn this far in the past, so motion stays smooth
+    respawnTime: 3,
+    spawnProtect: 2, // seconds of invulnerability after spawning
+    killLimit: 20, // first to this many kills wins the match
+    matchRestartDelay: 8,
+    regenDelay: 5, // seconds without taking damage before health starts to come back
+    regenRate: 8, // health per second while regenerating
+    pickupInterval: 7, // seconds between ammo / health crates appearing around the arena
+    pickupMax: 6, // most crates lying around at once
+    pickupLife: 30, // seconds a crate lasts (dropped and spawned ones)
+    dropHealthChance: 0.4, // a dead player always drops ammo, and health with this chance
+  },
+
   pickups: {
     dropChance: 0.28,
     healthBias: 0.65, // chance a drop is health when you are hurt
-    poolPerKind: 10,
+    poolPerKind: 16,
     collectRadius: 1.3,
     lifetime: 18,
     healthAmount: 25,
-    ammo: { pistol: 24, shotgun: 8, slug: 3, smg: 60, raygun: 40 }, // keys match weapons (shotgun = buckshot) and ammoTypes[].pickupKey
+    ammo: { pistol: 24, shotgun: 8, slug: 3, smg: 60, raygun: 40, sniper: 5 }, // keys match weapons (shotgun = buckshot) and ammoTypes[].pickupKey
   },
 };
 
@@ -249,9 +286,36 @@ const world = new World(scene, CONFIG);
 const player = new Player(camera, world, CONFIG.player);
 const enemies = new Enemies({ cfg: CONFIG, scene, world, fx, player });
 const weapons = new Weapons({ cfg: CONFIG, camera, mainScene: scene, envMap, world, enemies, player, fx, hud, audio });
-const wizard = new Wizard({ scene, player, weapons });
-weapons.tp = wizard;
+const cyborg = new Cyborg({ scene, player, weapons });
+weapons.tp = cyborg;
 const pickups = new Pickups(scene, CONFIG);
+const scoreboard = new Scoreboard();
+const net = new NetClient({
+  onStatus: (status) => {
+    mpMenu.setStatus(status);
+    if (status === NET_STATUS.CLOSED && game.mode === 'deathmatch') toMenu();
+  },
+  onRoster: (players) => onNetRoster(players),
+  onJoinError: (code) => mpMenu.showError(code),
+  onMessage: (from, message) => {
+    remotes.receive(from, message, performance.now() * 0.001);
+    deathmatch.onMessage(from, message);
+  },
+});
+const remotes = new RemotePlayers({ scene, fx, world, weapons, audio, config: CONFIG.multiplayer });
+remotes.listener = camera;
+weapons.enemies = new Targets({ enemies, remotes }); // shots now hit bots and other players alike
+const deathmatch = new Deathmatch({
+  config: CONFIG.multiplayer, arenaHalf: CONFIG.arena.half, net, player, weapons, cyborg, remotes, world, scoreboard, hud, pickups,
+});
+const mpMenu = new MultiplayerMenu({
+  onJoin: (name) => net.join(name),
+  onBack: () => {
+    net.close();
+    mpMenu.close();
+    hud.showStart(true, false);
+  },
+});
 const inventory = new Inventory({
   weapons,
   onResume: () => {
@@ -261,7 +325,7 @@ const inventory = new Inventory({
   },
 });
 
-const game = { kills: 0, time: 0, mode: null }; // mode: null (menu) | 'waves' | 'sandbox'
+const game = { kills: 0, time: 0, mode: null }; // mode: null (menu) | 'waves' | 'sandbox' | 'deathmatch'
 
 player.onDamage = () => {
   hud.damage();
@@ -271,6 +335,11 @@ player.onJump = () => audio.jump();
 player.onLand = (impact) => audio.land(impact);
 player.onSlide = () => audio.slide();
 player.onDeath = () => {
+  if (game.mode === 'deathmatch') { // no game-over screen: the match respawns you
+    audio.deathDialup();
+    deathmatch.onLocalDeath();
+    return;
+  }
   hud.showDeath(director.wave, game.kills);
   audio.deathDialup();
   document.exitPointerLock();
@@ -351,18 +420,38 @@ const director = {
 };
 
 /* ========================================================================== *
+ *  Multiplayer glue
+ * ========================================================================== */
+/** The server roster changed: update the lobby list, avatars and match tables; start the match once joined. */
+function onNetRoster(players) {
+  mpMenu.setRoster(players, net.id);
+  remotes.sync(players, net.id);
+  if (game.mode === 'deathmatch') deathmatch.onRoster(players);
+  if (mpMenu.isOpen && net.joined) {
+    mpMenu.close();
+    startMode('deathmatch');
+  }
+}
+
+function openMultiplayer() {
+  hud.showStart(false);
+  mpMenu.open();
+  net.connect();
+}
+
+/* ========================================================================== *
  *  Input
  * ========================================================================== */
 const input = {
   forward: false, back: false, left: false, right: false,
-  sprintHeld: false, fireHeld: false, aimHeld: false,
+  sprintHeld: false, fireHeld: false, aimHeld: false, boardHeld: false, crouchHeld: false, leanLeft: false, leanRight: false,
   // One-shot edges: latched until a fixed step consumes them, so a press is never
   // lost on a rendered frame that happens to run zero fixed steps.
-  jumpPressed: false, slidePressed: false, firePressed: false, ammoPressed: false,
+  jumpPressed: false, slidePressed: false, sprintPressed: false, firePressed: false, ammoPressed: false,
   reloadPressed: false, meleePressed: false, selectSlot: -1, wheel: 0,
 
   clearEdges() {
-    this.jumpPressed = this.slidePressed = this.firePressed = this.ammoPressed = false;
+    this.jumpPressed = this.slidePressed = this.sprintPressed = this.firePressed = this.ammoPressed = false;
     this.reloadPressed = this.meleePressed = false;
     this.selectSlot = -1;
     this.wheel = 0;
@@ -370,19 +459,32 @@ const input = {
 
   clearAll() {
     this.forward = this.back = this.left = this.right = false;
-    this.sprintHeld = this.fireHeld = this.aimHeld = false;
+    this.sprintHeld = this.fireHeld = this.aimHeld = this.boardHeld = this.crouchHeld = false;
+    this.leanLeft = this.leanRight = false;
     this.clearEdges();
   },
 };
 
 let locked = false;
 
-function requestLock() {
+const RELOCK_RETRY_MS = 1300; // browsers refuse a new lock for about a second after the old one was released
+
+function requestLock(retry = true) {
   const result = canvas.requestPointerLock();
-  if (result && result.catch) result.catch(() => {}); // browsers refuse if requested too soon after Esc
+  if (result && result.catch) {
+    result.catch(() => {
+      if (retry) setTimeout(() => { if (!locked && canResume()) requestLock(false); }, RELOCK_RETRY_MS);
+    });
+  }
+}
+
+/** True when a game is running and the mouse was released by accident (Esc, alt-tab, a click outside). */
+function canResume() {
+  return game.mode !== null && !inventory.isOpen && (player.alive || game.mode === 'deathmatch');
 }
 
 document.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) return; // typing a username: no game shortcuts
   if (e.code === 'KeyM') {
     audio.toggleMute();
     return;
@@ -405,7 +507,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
-  if (!locked) return;
+  if (!locked || !player.alive) return; // dead players cannot act
   if (e.repeat) {
     e.preventDefault();
     return;
@@ -415,12 +517,21 @@ document.addEventListener('keydown', (e) => {
     case 'KeyS': case 'ArrowDown': input.back = true; break;
     case 'KeyA': case 'ArrowLeft': input.left = true; break;
     case 'KeyD': case 'ArrowRight': input.right = true; break;
-    case 'ShiftLeft': case 'ShiftRight': input.sprintHeld = true; break;
+    case 'ShiftLeft': case 'ShiftRight':
+      if (!e.repeat) input.sprintPressed = true; // a fresh tap cancels a slide
+      input.sprintHeld = true;
+      break;
     case 'Space': input.jumpPressed = true; break;
-    case 'KeyC': case 'ControlLeft': input.slidePressed = true; break;
+    case 'KeyC': case 'ControlLeft': // slides when sprinting, otherwise crouches while held
+      input.slidePressed = true;
+      input.crouchHeld = true;
+      break;
+    case 'KeyQ': input.leanLeft = true; break;
+    case 'KeyE': input.leanRight = true; break;
     case 'KeyR': input.reloadPressed = true; break;
-    case 'KeyV': input.meleePressed = true; break;
+    case 'KeyF': input.meleePressed = true; break;
     case 'KeyT': player.toggleView(); break; // first / third person
+    case 'KeyG': input.boardHeld = true; break; // multiplayer scoreboard while held
     case 'Tab': input.ammoPressed = true; break; // swap shotgun ammo type
     case 'Digit1': input.selectSlot = 0; break;
     case 'Digit2': input.selectSlot = 1; break;
@@ -438,12 +549,16 @@ document.addEventListener('keyup', (e) => {
     case 'KeyA': case 'ArrowLeft': input.left = false; break;
     case 'KeyD': case 'ArrowRight': input.right = false; break;
     case 'ShiftLeft': case 'ShiftRight': input.sprintHeld = false; break;
+    case 'KeyG': input.boardHeld = false; break;
+    case 'KeyC': case 'ControlLeft': input.crouchHeld = false; break;
+    case 'KeyQ': input.leanLeft = false; break;
+    case 'KeyE': input.leanRight = false; break;
     default: break;
   }
 });
 
 document.addEventListener('mousedown', (e) => {
-  if (!locked) return;
+  if (!locked || !player.alive) return;
   if (e.button === 0) {
     input.fireHeld = true;
     input.firePressed = true;
@@ -455,12 +570,19 @@ document.addEventListener('mouseup', (e) => {
   if (e.button === 0) input.fireHeld = false;
   if (e.button === 2) input.aimHeld = false;
 });
+// Any click that is not on a menu button takes the mouse back. Buttons stop their own click
+// from reaching here, so MAIN MENU and the like still work.
+document.addEventListener('click', () => {
+  if (locked || !canResume()) return;
+  audio.unlock();
+  requestLock();
+});
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('wheel', (e) => {
-  if (locked) input.wheel = Math.sign(e.deltaY);
+  if (locked && player.alive) input.wheel = Math.sign(e.deltaY);
 }, { passive: true });
 document.addEventListener('mousemove', (e) => {
-  if (!locked) return;
+  if (!locked || !player.alive) return;
   player.look(e.movementX, e.movementY);
   weapons.addLook(e.movementX, e.movementY);
 });
@@ -476,6 +598,7 @@ document.addEventListener('pointerlockerror', () => hud.showStart(player.alive, 
 
 hud.el.modeSandbox.addEventListener('click', (e) => { e.stopPropagation(); startMode('sandbox'); });
 hud.el.modeWaves.addEventListener('click', (e) => { e.stopPropagation(); startMode('waves'); });
+hud.el.modeMultiplayer.addEventListener('click', (e) => { e.stopPropagation(); audio.unlock(); openMultiplayer(); });
 hud.el.resume.addEventListener('click', (e) => { e.stopPropagation(); audio.unlock(); requestLock(); });
 hud.el.toMenu.addEventListener('click', (e) => { e.stopPropagation(); toMenu(); });
 hud.el.deadMenu.addEventListener('click', (e) => { e.stopPropagation(); toMenu(); });
@@ -487,7 +610,14 @@ hud.el.dead.addEventListener('click', () => {
 
 /** Back to the mode-select screen (the scene keeps rendering behind it). */
 function toMenu() {
-  game.mode = null;
+  const wasOnline = game.mode === 'deathmatch';
+  game.mode = null; // first: closing the connection reports "closed", which must not re-enter here
+  if (wasOnline) {
+    deathmatch.stop();
+    net.close();
+    remotes.clear();
+    hud.setKills(0);
+  }
   enemies.clear();
   pickups.clear();
   hud.clearNumbers();
@@ -501,13 +631,16 @@ function toMenu() {
 function startMode(mode) {
   const sandbox = mode === 'sandbox';
   game.mode = mode;
-  world.build(mode);
+  world.build(sandbox ? 'sandbox' : 'waves'); // deathmatch plays in the wave arena
   renderer.shadowMap.needsUpdate = true; // shadows are static: re-render them for the new level
   scene.fog.far = sandbox ? 230 : 130;
   scene.fog.near = sandbox ? 70 : 45;
+  player.spawnX = 0;
+  player.spawnY = 0;
+  player.spawnYaw = 0;
   player.spawnZ = sandbox ? CONFIG.sandbox.half - 30 : 22;
   player.reset();
-  wizard.reset();
+  cyborg.reset();
   player.invulnerable = sandbox;
   weapons.reset();
   weapons.infiniteAmmo = sandbox;
@@ -518,7 +651,8 @@ function startMode(mode) {
   hud.setMode(mode);
   game.kills = 0;
   hud.setKills(0);
-  if (!sandbox) director.reset();
+  if (mode === 'waves') director.reset();
+  if (mode === 'deathmatch') deathmatch.start();
   accumulator = 0;
   audio.unlock();
   requestLock();
@@ -551,9 +685,10 @@ function renderFrame(alpha, dt) {
   player.applyCamera(alpha, dt);
   skyDome.position.copy(camera.position);
   camera.updateMatrixWorld(); // HUD projection and viewmodel read this frame's camera
-  wizard.update(dt, alpha, game.time, weapons);
+  cyborg.update(dt, alpha, game.time, weapons);
   weapons.updateView(dt, game.time);
   enemies.animate(alpha, game.time, dt);
+  remotes.update(dt, game.time, performance.now() * 0.001);
   pickups.animate(game.time);
   fx.update(dt);
   hud.setHealth(player.health, CONFIG.player.maxHealth);
@@ -570,8 +705,10 @@ function frame(now) {
   lastTime = now;
   game.time += dt;
 
-  const playing = locked && player.alive && game.mode !== null;
+  const online = game.mode === 'deathmatch'; // the match runs on even when the pointer is released
+  const playing = (locked || online) && player.alive && game.mode !== null;
   if (!playing) weapons.cease(); // never leave a beam (or its hum) running while paused
+  if (!player.alive) input.clearAll(); // dead: forget held keys and latched presses, so respawning starts clean
   let alpha = 1;
   if (playing) {
     accumulator += dt;
@@ -583,6 +720,11 @@ function frame(now) {
     }
     if (steps === CONFIG.maxStepsPerFrame) accumulator = 0; // way behind: drop the backlog
     alpha = accumulator / CONFIG.fixedStep;
+  }
+  if (online) {
+    deathmatch.update(dt, { boardHeld: input.boardHeld });
+    // The match keeps running when the mouse is released: always show how to get it back.
+    if (!locked && canResume() && hud.el.start.style.display === 'none') hud.showStart(true, true);
   }
   renderFrame(alpha, dt);
 }

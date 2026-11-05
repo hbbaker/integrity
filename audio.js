@@ -8,12 +8,16 @@
 const DIAL_LOW = [697, 770, 852, 941];
 const DIAL_HIGH = [1209, 1336, 1477];
 
+// Distance at which a remote gunshot is half as loud.
+const DISTANT_SOUND_RANGE = 14;
+
 export class AudioFX {
   constructor() {
     this.ctx = null;
     this.master = null;
     this.noise = null;
     this.muted = false;
+    this.bus = null; // where tones and noise go: master, or a quieter gain for distant sounds
     this._beam = null; // nodes of the running raygun hum
   }
 
@@ -27,6 +31,7 @@ export class AudioFX {
       this.master.gain.value = 0.45;
       this.master.connect(this.ctx.destination);
       this.noise = this._makeNoiseBuffer();
+      this.bus = this.master;
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
   }
@@ -56,7 +61,7 @@ export class AudioFX {
     osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + duration);
     amp.gain.setValueAtTime(gain, t);
     amp.gain.exponentialRampToValueAtTime(0.001, t + duration);
-    osc.connect(amp).connect(this.master);
+    osc.connect(amp).connect(this.bus);
     osc.start(t);
     osc.stop(t + duration + 0.02);
   }
@@ -74,7 +79,7 @@ export class AudioFX {
     const amp = this.ctx.createGain();
     amp.gain.setValueAtTime(gain, t);
     amp.gain.exponentialRampToValueAtTime(0.001, t + duration);
-    src.connect(filter).connect(amp).connect(this.master);
+    src.connect(filter).connect(amp).connect(this.bus);
     src.start(t, Math.random() * 0.5);
     src.stop(t + duration + 0.02);
   }
@@ -89,6 +94,12 @@ export class AudioFX {
         this._noise(0.32, 'lowpass', 2200, 200, 1.2);
         this._tone('sawtooth', 160, 35, 0.3, 0.5);
         break;
+      case 'sniper':
+        this._noise(0.5, 'lowpass', 5000, 150, 1.4);
+        this._tone('sawtooth', 220, 28, 0.45, 0.6);
+        this._tone('sine', 90, 25, 0.5, 0.7);
+        this._noise(0.05, 'highpass', 4000, 3000, 0.8); // sharp crack
+        break;
       case 'smg':
         this._noise(0.05, 'bandpass', 3200, 900, 0.7);
         this._tone('square', 320, 90, 0.06, 0.22);
@@ -96,6 +107,17 @@ export class AudioFX {
       default:
         break;
     }
+  }
+
+  /** A gunshot heard from `distance` metres away: quieter the further it is. */
+  shootAt(id, distance) {
+    if (!this.ctx || this.muted) return;
+    const gain = this.ctx.createGain();
+    gain.gain.value = 1 / (1 + distance / DISTANT_SOUND_RANGE);
+    gain.connect(this.master);
+    this.bus = gain;
+    this.shoot(id);
+    this.bus = this.master;
   }
 
   punch(hit) {

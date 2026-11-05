@@ -15,6 +15,7 @@ export const WEAPON_ICONS = {
   pistol: `<svg viewBox="0 0 100 50"><rect x="14" y="8" width="70" height="16" rx="4" fill="#ffd800" ${stroke}/><rect x="22" y="22" width="26" height="8" fill="#9aa0a6" ${stroke}/><rect x="26" y="24" width="16" height="22" rx="4" fill="#e3242b" ${stroke}/></svg>`,
   shotgun: `<svg viewBox="0 0 100 50"><rect x="4" y="12" width="72" height="9" rx="3" fill="#cfd3d6" ${stroke}/><rect x="30" y="22" width="26" height="8" rx="3" fill="#ff7a1a" ${stroke}/><rect x="56" y="14" width="22" height="16" rx="3" fill="#ff7a1a" ${stroke}/><path d="M78 14l16 6-4 20-14-8z" fill="#e3242b" ${stroke}/></svg>`,
   raygun: `<svg viewBox="0 0 100 50"><path d="M8 24C8 12 30 10 52 14L70 18C80 10 90 12 90 22C90 32 80 34 70 30L52 34C30 38 8 36 8 24Z" fill="#7a3cff" ${stroke}/><circle cx="82" cy="22" r="7" fill="#4dffb0" ${stroke}/><circle cx="40" cy="24" r="5" fill="#4dffb0" ${stroke}/><path d="M26 33C28 40 34 46 40 44L42 36Z" fill="#e3242b" ${stroke}/></svg>`,
+  sniper: `<svg viewBox="0 0 100 50"><rect x="2" y="22" width="60" height="6" rx="2" fill="#cfd3d6" ${stroke}/><rect x="30" y="8" width="26" height="10" rx="4" fill="#3a6bff" ${stroke}/><rect x="52" y="20" width="26" height="12" rx="3" fill="#7a3cff" ${stroke}/><path d="M76 20h18l-4 18H74z" fill="#e3242b" ${stroke}/></svg>`,
   smg: `<svg viewBox="0 0 100 50"><rect x="6" y="12" width="72" height="16" rx="4" fill="#7a3cff" ${stroke}/><rect x="40" y="26" width="12" height="20" rx="3" fill="#ffd800" ${stroke}/><rect x="64" y="26" width="10" height="18" rx="3" fill="#e3242b" ${stroke}/><rect x="78" y="14" width="16" height="10" rx="3" fill="#9aa0a6" ${stroke}/></svg>`,
 };
 
@@ -31,14 +32,14 @@ export class Hud {
       healthPanel: $('health-panel'), healthFill: $('health-fill'), healthText: $('health-text'),
       weaponIcon: $('weapon-icon'), weaponName: $('weapon-name'), weaponAlt: $('weapon-alt'), slotBar: $('slot-bar'),
       ammoMag: $('ammo-mag'), ammoReserve: $('ammo-reserve'), ammoSep: $('ammo-sep'), reload: $('reload-indicator'),
-      crosshair: $('crosshair'), hitmarker: $('hitmarker'),
+      crosshair: $('crosshair'), scope: $('scope'), hitmarker: $('hitmarker'),
       wave: $('wave'), kills: $('kills'), banner: $('banner'),
       vignette: $('vignette'), numbers: $('damage-numbers'),
-      start: $('overlay-start'), modeSandbox: $('mode-sandbox'), modeWaves: $('mode-waves'), resume: $('start-resume'), toMenu: $('start-menu'), deadMenu: $('dead-menu'), startTitle: $('start-sub'), waveGroup: $('wave-pill'), modeButtons: $('mode-buttons'), pauseButtons: $('pause-buttons'), dead: $('overlay-dead'), deadWave: $('dead-wave'), deadKills: $('dead-kills'),
+      start: $('overlay-start'), modeSandbox: $('mode-sandbox'), modeWaves: $('mode-waves'), modeMultiplayer: $('mode-multiplayer'), resume: $('start-resume'), toMenu: $('start-menu'), deadMenu: $('dead-menu'), startTitle: $('start-sub'), waveGroup: $('wave-pill'), modeButtons: $('mode-buttons'), pauseButtons: $('pause-buttons'), dead: $('overlay-dead'), deadWave: $('dead-wave'), deadKills: $('dead-kills'),
     };
 
     // Cached values so the DOM is only touched when something actually changes.
-    this.last = { health: -1, mag: -1, reserve: -1, reloading: null, melee: null, spread: -1, weapon: '', aim: -1, alt: null, loadout: '' };
+    this.last = { health: -1, mag: -1, reserve: -1, reloading: null, melee: null, spread: -1, weapon: '', aim: -1, alt: null, loadout: '', scope: -1 };
     this.healthFraction = 1;
     this.hitPulse = 0;
 
@@ -146,7 +147,7 @@ export class Hud {
   }
 
   setMode(mode) {
-    this.el.waveGroup.style.display = mode === 'sandbox' ? 'none' : '';
+    this.el.waveGroup.style.display = mode === 'waves' ? '' : 'none';
     this.el.banner.textContent = '';
   }
 
@@ -167,6 +168,14 @@ export class Hud {
     if (Math.abs(blend - this.last.aim) < 0.02) return;
     this.last.aim = blend;
     this.el.crosshair.style.opacity = (1 - Math.min(1, blend * 1.6)).toFixed(2);
+  }
+
+  /** Scope overlay: fades in over the last stretch of the aim blend, so the gun is gone before it covers the screen. */
+  setScope(blend) {
+    const opacity = Math.min(1, Math.max(0, (blend - 0.6) / 0.4));
+    if (Math.abs(opacity - this.last.scope) < 0.02) return;
+    this.last.scope = opacity;
+    this.el.scope.style.opacity = opacity.toFixed(2);
   }
 
   hitmarker(crit, kill) {
