@@ -233,7 +233,8 @@ const scene = new THREE.Scene();
 const envMap = createEnvironment(renderer); // sky-lit reflections and ambient light for all PBR materials
 scene.environment = envMap;
 scene.environmentIntensity = 0.7;
-scene.add(createSkyDome(300));
+const skyDome = createSkyDome(250); // follows the camera so it can never be clipped by the far plane
+scene.add(skyDome);
 scene.fog = new THREE.Fog(CONFIG.fogColor, 45, 130); // sandbox widens this in startMode
 
 const camera = new THREE.PerspectiveCamera(CONFIG.player.fov, window.innerWidth / window.innerHeight, 0.1, 320);
@@ -548,6 +549,7 @@ function fixedUpdate(dt) {
 
 function renderFrame(alpha, dt) {
   player.applyCamera(alpha, dt);
+  skyDome.position.copy(camera.position);
   camera.updateMatrixWorld(); // HUD projection and viewmodel read this frame's camera
   wizard.update(dt, alpha, game.time, weapons);
   weapons.updateView(dt, game.time);
