@@ -116,6 +116,35 @@
   .overlay .keys { padding: 12px 24px; font-size: 17px; line-height: 1.8; }
   #overlay-dead { display: none; background: var(--dots), rgba(90, 0, 10, .85); }
   #overlay-dead h1 { color: var(--red); }
+
+  /* ---------- loadout slot bar ---------- */
+  #slot-bar { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); display: flex; gap: 8px; }
+  #slot-bar .slot { position: relative; width: 74px; height: 46px; padding: 4px 6px; background: var(--dots), linear-gradient(#f7f0d9, #e3d8b4); border: 4px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); transform: skewX(-6deg); opacity: .75; }
+  #slot-bar .slot.on { opacity: 1; background: var(--dots), linear-gradient(#ffe84d, var(--yellow)); transform: skewX(-6deg) translateY(-6px); }
+  #slot-bar .slot b { position: absolute; left: 3px; top: -2px; font-size: 14px; font-weight: 400; color: var(--ink); }
+  #slot-bar .slot svg { width: 100%; height: 100%; }
+
+  /* ---------- inventory ---------- */
+  #inventory { display: none; z-index: 20; cursor: default; gap: 12px; overflow-y: auto; }
+  #inventory h1 { font-size: clamp(40px, 7vw, 76px); }
+  #inventory h3 { margin: 4px 0 0; font-size: 26px; color: #fff; -webkit-text-stroke: 7px var(--ink); paint-order: stroke fill; }
+  #inv-slots, #inv-armory { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; max-width: 1000px; }
+  .inv-card { width: 220px; padding: 8px 14px 12px; text-align: left; cursor: pointer; position: relative; }
+  .inv-card .tag { font-size: 14px; color: var(--red); }
+  .inv-card .icon { height: 54px; margin: 2px 0; }
+  .inv-card .icon svg { width: 100%; height: 100%; }
+  .inv-card .name { font-size: 22px; line-height: 1; }
+  .inv-card .stat { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 4px; }
+  .inv-card .stat span:first-child { width: 48px; }
+  .inv-card .bar { flex: 1; height: 9px; border: 2px solid var(--ink); background: #3a3a3a; }
+  .inv-card .bar i { display: block; height: 100%; background: linear-gradient(#ff5a5f, var(--red)); }
+  .inv-card .meta { font-size: 13px; margin-top: 4px; opacity: .8; }
+  .inv-card.active { background: var(--dots), linear-gradient(#ffe84d, var(--yellow)); transform: skewX(-6deg) translateY(-6px); }
+  .inv-card:hover { filter: brightness(1.08); }
+  .inv-card .slotmark { position: absolute; right: 10px; top: 6px; font-size: 14px; background: var(--ink); color: var(--yellow); padding: 0 8px; }
+  #inventory .hint { font-size: 15px; -webkit-text-stroke: 5px var(--ink); }
+  #inv-resume { cursor: pointer; font: inherit; font-size: 26px; padding: 6px 36px; background: var(--dots), linear-gradient(#ffe84d, var(--yellow)); }
+  #inv-resume:hover { filter: brightness(1.1); }
   @keyframes bob { from { transform: translateY(0); } to { transform: translateY(-8px); } }
 </style>
 </head>
@@ -151,6 +180,7 @@
     <div id="reload-indicator">RELOADING</div>
   </div>
 
+  <div id="slot-bar"></div>
   <div id="mute-hint">M: MUTE</div>
 </div>
 
@@ -159,9 +189,19 @@
   <h2>CLICK TO PLAY</h2>
   <div class="panel keys">
     WASD move &nbsp;·&nbsp; MOUSE look &nbsp;·&nbsp; SHIFT sprint &nbsp;·&nbsp; SPACE jump<br>
+    1-3 weapon slots &nbsp;·&nbsp; 4 fists &nbsp;·&nbsp; I inventory<br>
     C / CTRL slide (while sprinting) &nbsp;·&nbsp; LMB fire &nbsp;·&nbsp; RMB aim &nbsp;·&nbsp; R reload &nbsp;·&nbsp; V melee<br>
-    1-4 / WHEEL switch weapon &nbsp;·&nbsp; TAB shotgun ammo (needs reload) &nbsp;·&nbsp; M mute
+    WHEEL cycle weapons &nbsp;·&nbsp; TAB shotgun ammo (needs reload) &nbsp;·&nbsp; M mute
   </div>
+</div>
+
+<div id="inventory" class="overlay">
+  <h1>INVENTORY</h1>
+  <div id="inv-slots"></div>
+  <h3>ARMORY</h3>
+  <div id="inv-armory"></div>
+  <p class="hint">CLICK A SLOT, THEN A GUN TO ASSIGN IT &nbsp;·&nbsp; 1-3 PICK SLOT &nbsp;·&nbsp; I OR ESC TO CLOSE</p>
+  <button id="inv-resume" class="panel">RESUME</button>
 </div>
 
 <div id="overlay-dead" class="overlay">

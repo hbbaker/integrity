@@ -196,7 +196,7 @@ export function createEnvironment(renderer) {
  *  Small canvas textures
  * ------------------------------------------------------------------ */
 
-function makeGlowTexture() {
+export function makeGlowTexture() {
   const canvas = makeCanvas(64);
   const ctx = canvas.getContext('2d');
   const grad = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
@@ -537,6 +537,12 @@ export class MuzzleFlash {
     this.light = new THREE.PointLight(0xffb23d, 0, 3, 1);
     this.group.add(this.sprite, this.light);
     this.time = 0;
+  }
+
+  /** Tint the sprite and its light (the raygun flashes green, guns orange). */
+  setColor(spriteHex, lightHex) {
+    this.sprite.material.color.setHex(spriteHex);
+    this.light.color.setHex(lightHex);
   }
 
   fire(size = 0.3, intensity = 6) {

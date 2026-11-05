@@ -715,11 +715,14 @@ export class Enemies {
   /* ------------------------------ damage --------------------------------- */
 
   /**
-   * Apply damage. opts: { dirX, dirZ, knock, stun }. Returns true if the bot died.
+   * Apply damage. opts: { dirX, dirZ, knock, stun, rollScale }. rollScale (default 1) scales the
+   * per-hit chances of ducking for cover / speaking, so a beam that damages 10x a second does
+   * not make every bot bolt instantly. Returns true if the bot died.
    * Numbers, hitmarkers and sounds are the caller's job (weapons.js).
    */
   damage(e, amount, opts) {
     if (e.hp <= 0) return false;
+    const roll = opts.rollScale ?? 1;
     e.hp -= amount;
     e.flash = this.cfg.hitFlashTime;
     e.sq = 0.9; // squash; the spring in animate() overshoots into a stretch
@@ -736,10 +739,10 @@ export class Enemies {
     }
     // Hurt bots may run for cover; the more hurt, the likelier.
     if (e.state === 'advance' && e.coverCd <= 0) {
-      const chance = e.def.ai.cover * (1.4 - e.hp / e.def.hp);
+      const chance = e.def.ai.cover * (1.4 - e.hp / e.def.hp) * roll;
       if (Math.random() < chance) this._seekCover(e);
     }
-    if (e.bubbleCd <= 0 && Math.random() < 0.35) this._say(e, HIT_LINES);
+    if (e.bubbleCd <= 0 && Math.random() < 0.35 * roll) this._say(e, HIT_LINES);
     return false;
   }
 

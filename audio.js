@@ -14,6 +14,7 @@ export class AudioFX {
     this.master = null;
     this.noise = null;
     this.muted = false;
+    this._beam = null; // nodes of the running raygun hum
   }
 
   /** Must be called from a user gesture. Safe to call repeatedly. */
@@ -143,6 +144,64 @@ export class AudioFX {
   hurt() {
     this._tone('sawtooth', 240, 70, 0.25, 0.45);
     this._noise(0.12, 'lowpass', 900, 200, 0.5);
+  }
+
+  /** Continuous raygun hum: detuned saw + square through a low-pass, tremolo'd by an LFO. */
+  beamStart() {
+    if (!this.ctx || this.muted || this._beam) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0.0001, t);
+    amp.gain.exponentialRampToValueAtTime(0.3, t + 0.06);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 2000;
+    const saw = ctx.createOscillator();
+    saw.type = 'sawtooth';
+    saw.frequency.value = 140;
+    const square = ctx.createOscillator();
+    square.type = 'square';
+    square.frequency.value = 281;
+    const squareGain = ctx.createGain();
+    squareGain.gain.value = 0.3;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 26;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 0.1;
+    lfo.connect(lfoGain).connect(amp.gain);
+    saw.connect(filter);
+    square.connect(squareGain).connect(filter);
+    filter.connect(amp).connect(this.master);
+    saw.start(t);
+    square.start(t);
+    lfo.start(t);
+    this._beam = { saw, square, lfo, amp, filter };
+  }
+
+  /** Pitch and brightness fall with beam power, so you can hear it weaken. */
+  beamSet(power) {
+    if (!this._beam) return;
+    const t = this.ctx.currentTime;
+    this._beam.saw.frequency.setTargetAtTime(70 + power * 75, t, 0.05);
+    this._beam.square.frequency.setTargetAtTime(141 + power * 150, t, 0.05);
+    this._beam.filter.frequency.setTargetAtTime(600 + power * 1700, t, 0.05);
+  }
+
+  beamStop() {
+    if (!this._beam) return;
+    const { saw, square, lfo, amp } = this._beam;
+    this._beam = null;
+    const t = this.ctx.currentTime;
+    amp.gain.cancelScheduledValues(t);
+    amp.gain.setTargetAtTime(0.0001, t, 0.04);
+    for (const osc of [saw, square, lfo]) osc.stop(t + 0.25);
+  }
+
+  /** Rising whine while the raygun recharges a cell. */
+  recharge(duration) {
+    this._tone('sine', 160, 1200, duration, 0.2);
+    this._tone('triangle', 80, 600, duration, 0.18);
   }
 
   pickup() {

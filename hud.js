@@ -10,10 +10,11 @@ const INK = '#000000';
 
 // Simple inline-SVG weapon icons (viewBox 100x50, thick outlines to match the HUD).
 const stroke = `stroke="${INK}" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"`;
-const WEAPON_ICONS = {
+export const WEAPON_ICONS = {
   fists: `<svg viewBox="0 0 100 50"><rect x="14" y="14" width="46" height="26" rx="12" fill="#f4f4f4" ${stroke}/><rect x="52" y="18" width="34" height="18" rx="4" fill="#9aa0a6" ${stroke}/><path d="M26 14v26M38 14v26" ${stroke} fill="none"/></svg>`,
   pistol: `<svg viewBox="0 0 100 50"><rect x="14" y="8" width="70" height="16" rx="4" fill="#ffd800" ${stroke}/><rect x="22" y="22" width="26" height="8" fill="#9aa0a6" ${stroke}/><rect x="26" y="24" width="16" height="22" rx="4" fill="#e3242b" ${stroke}/></svg>`,
   shotgun: `<svg viewBox="0 0 100 50"><rect x="4" y="12" width="72" height="9" rx="3" fill="#cfd3d6" ${stroke}/><rect x="30" y="22" width="26" height="8" rx="3" fill="#ff7a1a" ${stroke}/><rect x="56" y="14" width="22" height="16" rx="3" fill="#ff7a1a" ${stroke}/><path d="M78 14l16 6-4 20-14-8z" fill="#e3242b" ${stroke}/></svg>`,
+  raygun: `<svg viewBox="0 0 100 50"><path d="M8 24C8 12 30 10 52 14L70 18C80 10 90 12 90 22C90 32 80 34 70 30L52 34C30 38 8 36 8 24Z" fill="#7a3cff" ${stroke}/><circle cx="82" cy="22" r="7" fill="#4dffb0" ${stroke}/><circle cx="40" cy="24" r="5" fill="#4dffb0" ${stroke}/><path d="M26 33C28 40 34 46 40 44L42 36Z" fill="#e3242b" ${stroke}/></svg>`,
   smg: `<svg viewBox="0 0 100 50"><rect x="6" y="12" width="72" height="16" rx="4" fill="#7a3cff" ${stroke}/><rect x="40" y="26" width="12" height="20" rx="3" fill="#ffd800" ${stroke}/><rect x="64" y="26" width="10" height="18" rx="3" fill="#e3242b" ${stroke}/><rect x="78" y="14" width="16" height="10" rx="3" fill="#9aa0a6" ${stroke}/></svg>`,
 };
 
@@ -28,7 +29,7 @@ export class Hud {
     const $ = (id) => document.getElementById(id);
     this.el = {
       healthPanel: $('health-panel'), healthFill: $('health-fill'), healthText: $('health-text'),
-      weaponIcon: $('weapon-icon'), weaponName: $('weapon-name'), weaponAlt: $('weapon-alt'),
+      weaponIcon: $('weapon-icon'), weaponName: $('weapon-name'), weaponAlt: $('weapon-alt'), slotBar: $('slot-bar'),
       ammoMag: $('ammo-mag'), ammoReserve: $('ammo-reserve'), ammoSep: $('ammo-sep'), reload: $('reload-indicator'),
       crosshair: $('crosshair'), hitmarker: $('hitmarker'),
       wave: $('wave'), kills: $('kills'), banner: $('banner'),
@@ -37,7 +38,7 @@ export class Hud {
     };
 
     // Cached values so the DOM is only touched when something actually changes.
-    this.last = { health: -1, mag: -1, reserve: -1, reloading: null, melee: null, spread: -1, weapon: '', aim: -1, alt: null };
+    this.last = { health: -1, mag: -1, reserve: -1, reloading: null, melee: null, spread: -1, weapon: '', aim: -1, alt: null, loadout: '' };
     this.healthFraction = 1;
     this.hitPulse = 0;
 
@@ -78,6 +79,16 @@ export class Hud {
     this.last.weapon = name;
     this.el.weaponName.textContent = name;
     this.el.weaponIcon.innerHTML = WEAPON_ICONS[id];
+  }
+
+  /** The three loadout slots (plus fists on 4) along the bottom; the equipped one is lit. */
+  setLoadout(ids, active) {
+    const key = `${ids.join()}|${active}`;
+    if (key === this.last.loadout) return;
+    this.last.loadout = key;
+    const cell = (label, id, on) => `<div class="slot${on ? ' on' : ''}"><b>${label}</b>${WEAPON_ICONS[id]}</div>`;
+    this.el.slotBar.innerHTML = ids.map((id, i) => cell(i + 1, id, active === i)).join('')
+      + cell(4, 'fists', active === ids.length);
   }
 
   /** Small hint line under the weapon name, e.g. "TAB: SLUG 8". Pass '' to hide. */

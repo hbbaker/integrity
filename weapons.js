@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { MuzzleFlash, material } from './effects.js';
+import { MuzzleFlash, material, makeGlowTexture } from './effects.js';
+import { buildRaygun, glowColor } from './raygun.js';
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const damp = (current, target, rate, dt) => current + (target - current) * (1 - Math.exp(-rate * dt));
@@ -176,11 +177,17 @@ function buildFists() {
   return { root, muzzle: null, home: { x: 0, y: 0, z: 0 }, parts: { hands } };
 }
 
-const MODEL_BUILDERS = { fists: buildFists, pistol: buildPistol, shotgun: buildShotgun, smg: buildSmg };
+const MODEL_BUILDERS = {
+  fists: buildFists, pistol: buildPistol, shotgun: buildShotgun, smg: buildSmg,
+  raygun: () => buildRaygun(makeArm),
+};
+
+const FISTS = 0; // weapon index of the fists; always available on key 4 and in the wheel cycle
 
 export class Weapons {
-  constructor({ cfg, mainScene, envMap, world, enemies, player, fx, hud, audio }) {
+  constructor({ cfg, camera, mainScene, envMap, world, enemies, player, fx, hud, audio }) {
     this.cfg = cfg.weapons;
+    this.camera = camera;
     this.world = world;
     this.enemies = enemies;
     this.player = player;
@@ -214,6 +221,12 @@ export class Weapons {
       return model;
     });
 
+    // Three loadout slots (keys 1-3) hold indices into this.slots; edited from the inventory menu.
+    // Fists (index 0) are always on key 4 and are not part of the loadout.
+    this.loadout = [1, 2, 3];
+
+    this._createBeam(mainScene);
+
     // Aim scratch vectors (reused every shot).
     this._origin = new THREE.Vector3();
     this._fwd = new THREE.Vector3();
@@ -223,6 +236,9 @@ export class Weapons {
     this._from = new THREE.Vector3();
     this._to = new THREE.Vector3();
     this._tmp = new THREE.Vector3();
+    this._muzzleW = new THREE.Vector3();
+    this._beamEnd = new THREE.Vector3();
+    this._beamColor = new THREE.Color();
     this.hits = Array.from({ length: MAX_HITS }, () => ({ enemy: null, dmg: 0, crit: false, size: 1, point: new THREE.Vector3() }));
     this.hitCount = 0;
 
@@ -246,6 +262,7 @@ export class Weapons {
     this.switchAmount = 0;
     this.pendingIndex = SLOT_PISTOL;
     this.pumpTimer = 0;
+    this._resetBeamState();
     this.aiming = false;
     this.adsBlend = 0; // 0 = hip, 1 = on the sights (smoothed per frame)
 
@@ -308,6 +325,7 @@ export class Weapons {
       slot.reserve = slot.cfg.reserve || 0;
     }
     slot.mag = slot.base.mag || 0;
+    slot.beamTime = 0; // seconds of continuous beam since the last reload (drives the power falloff)
   }
 
   _otherAmmoType(slot) {
@@ -374,6 +392,7 @@ export class Weapons {
     if (index < 0 || index >= this.slots.length) return;
     if (!this.switching && index === this.index) return;
     if (this.switching && index === this.pendingIndex) return;
+    this._stopBeam();
     this._cancelReload();
     this.pendingIndex = index;
     this.switching = true;
@@ -389,8 +408,11 @@ export class Weapons {
     if (model.muzzle) model.muzzle.add(this.flash.group);
     else this.flash.group.removeFromParent();
     this.cooldown = Math.max(this.cooldown, 0.05);
+    const tint = this.current.cfg.flashTint;
+    this.flash.setColor(tint ?? 0xffffff, tint ?? 0xffb23d);
     this.hud.setWeapon(this.current.cfg.id, this.current.cfg.name);
     this._pushHud();
+    this._pushLoadout();
   }
 
   _updateSwitch(dt) {
@@ -421,11 +443,12 @@ export class Weapons {
     this.heat = Math.max(0, this.heat - dt * this.cfg.heatDecay);
     if (input.firePressed) this.triggerBuffer = 0.15; // press buffering: a click just before the gun is ready still fires
 
-    if (input.selectSlot >= 0) this.select(input.selectSlot);
+    if (input.selectSlot >= 0) this.selectLoadout(input.selectSlot);
     if (input.wheel !== 0) {
-      const n = this.slots.length;
-      const from = this.switching ? this.pendingIndex : this.index;
-      this.select((from + input.wheel + n) % n);
+      // The wheel cycles the three loadout slots, then fists.
+      const order = [...this.loadout, FISTS];
+      const from = order.indexOf(this.switching ? this.pendingIndex : this.index);
+      this.select(order[(from + input.wheel + order.length) % order.length]);
     }
     this._updateSwitch(dt);
     if (input.ammoPressed && !this.switching) this.toggleAmmo();
@@ -449,6 +472,11 @@ export class Weapons {
       this._updateReload(dt);
 
       const c = this.current.cfg;
+      if (c.beam) {
+        this._updateBeam(dt, input);
+        this._pushHud();
+        return;
+      }
       const wantsFire = c.auto ? (input.fireHeld || this.triggerBuffer > 0) : this.triggerBuffer > 0;
       if (wantsFire && this.cooldown <= 0) {
         if (this.player.sprinting) {
@@ -460,12 +488,14 @@ export class Weapons {
         }
       }
     }
+    if (this.switching) this._stopBeam();
     this._pushHud();
   }
 
   _pushHud() {
     const w = this.current;
-    this.hud.setAmmo(w.mag, w.reserve, this.reloading, !!w.cfg.melee);
+    // Ceil: the raygun's energy drains fractionally.
+    this.hud.setAmmo(Math.ceil(w.mag), Math.ceil(w.reserve), this.reloading, !!w.cfg.melee);
     if (w.typeCfgs) {
       const other = this._otherAmmoType(w);
       this.hud.setAltAmmo(`TAB: ${w.typeCfgs[other].label} ${w.stash[other]}`);
@@ -474,13 +504,260 @@ export class Weapons {
     }
   }
 
+  /* ------------------------------ loadout --------------------------------- */
+
+  /** Keys 1-3 pick a loadout slot, key 4 picks fists. */
+  selectLoadout(slot) {
+    this.select(slot >= this.loadout.length ? FISTS : this.loadout[slot]);
+  }
+
+  /** Which loadout slot (0-2) holds the equipped weapon, 3 for fists, -1 if none. */
+  activeSlot() {
+    const target = this.switching ? this.pendingIndex : this.index;
+    if (target === FISTS) return this.loadout.length;
+    return this.loadout.indexOf(target);
+  }
+
+  /** Put weapon `weaponIndex` into loadout slot `slot`, swapping if it is already in another slot. */
+  assign(slot, weaponIndex) {
+    if (weaponIndex === FISTS || weaponIndex < 0 || weaponIndex >= this.slots.length) return;
+    const existing = this.loadout.indexOf(weaponIndex);
+    if (existing >= 0) this.loadout[existing] = this.loadout[slot];
+    this.loadout[slot] = weaponIndex;
+    this._pushLoadout();
+  }
+
+  /** Stats for the inventory menu. */
+  describe(index) {
+    const s = this.slots[index];
+    const c = s.cfg;
+    const dps = c.beam ? c.dps : (c.damage * (c.pellets || 1)) / c.interval;
+    const capacity = c.beam ? `${(c.mag / c.drainRate).toFixed(1)}s beam` : `${c.mag} rounds`;
+    return { index, id: c.id, name: s.base.name, dps, range: c.range, capacity, slot: this.loadout.indexOf(index) };
+  }
+
+  /** Every weapon that can go in a loadout slot (everything except fists). */
+  armory() {
+    return this.slots.map((_, i) => i).filter((i) => i !== FISTS).map((i) => this.describe(i));
+  }
+
+  _pushLoadout() {
+    this.hud.setLoadout(this.loadout.map((i) => this.slots[i].cfg.id), this.activeSlot());
+  }
+
+  /* -------------------------------- beam ---------------------------------- */
+
+  _resetBeamState() {
+    this.beamOn = false;
+    this.beamTick = 0;
+    this.beamAcc = 0;
+    this.beamAccCrit = false;
+    this.beamAccTime = 0;
+    this.beamAccEnemy = null;
+    this.reloadFromEnergy = 1;
+    this.audio.beamStop();
+    if (this.beam) this.beam.group.visible = false;
+  }
+
+  /** Beam power 0..1: full at the start of a cell, easing down to `powerMin` over `falloffTime` seconds of firing. */
+  beamPower(slot) {
+    const c = slot.cfg;
+    const t = clamp(slot.beamTime / c.falloffTime, 0, 1);
+    return 1 - (1 - c.powerMin) * (t * t * (3 - 2 * t));
+  }
+
+  /** Called every frame the game is not running (menu open, paused, dead). */
+  cease() {
+    if (this.beamOn) this._stopBeam();
+  }
+
+  _stopBeam() {
+    if (!this.beamOn) return;
+    this.beamOn = false;
+    this._flushBeamNumber();
+    this.audio.beamStop();
+    this.beam.group.visible = false;
+    this.worldLight.intensity = 0;
+  }
+
+  _updateBeam(dt, input) {
+    const w = this.current;
+    const c = w.cfg;
+    const wants = input.fireHeld;
+
+    if (wants && this.player.sprinting) { // firing cancels the sprint, same as the guns
+      this.player.cancelSprint();
+      this._stopBeam();
+      return;
+    }
+    if (wants && !this.reloading && w.mag <= 0) { // empty cell: recharge, or click if there is nothing left
+      this._stopBeam();
+      if (w.reserve > 0) this.startReload();
+      else if (input.firePressed) this.audio.dry();
+      return;
+    }
+    if (!wants || this.reloading || w.mag <= 0) {
+      this._stopBeam();
+      return;
+    }
+
+    if (!this.beamOn) {
+      this.beamOn = true;
+      this.beamTick = 0;
+      this.audio.beamStart();
+    }
+    w.mag = Math.max(0, w.mag - c.drainRate * dt);
+    w.beamTime += dt; // the falloff clock only runs while firing, and only a reload resets it
+    const power = this.beamPower(w);
+    this.audio.beamSet(power);
+    this.player.addRecoil(0.0003, (Math.random() - 0.5) * 0.0006, 0); // faint rumble
+
+    this.beamTick -= dt;
+    if (this.beamTick <= 0) {
+      this.beamTick += c.tick;
+      this._beamDamage(c, power);
+    }
+    if (w.mag <= 0) this._stopBeam();
+  }
+
+  /** One damage tick: damage scales with current beam power. Numbers are merged into ~3 per second. */
+  _beamDamage(c, power) {
+    this.player.getAim(this._origin, this._fwd, this._right, this._up);
+    const wallT = this.world.raycast(this._origin, this._fwd, c.range);
+    const hit = this.enemies.raycast(this._origin, this._fwd, Math.min(c.range, wallT), c.beamRadius);
+    if (!hit) {
+      this._flushBeamNumber();
+      return;
+    }
+    const enemy = hit.enemy;
+    if (this.beamAccEnemy !== enemy) this._flushBeamNumber();
+    this.beamAccEnemy = enemy;
+    this._beamEnd.copy(this._origin).addScaledVector(this._fwd, hit.t);
+
+    const damage = c.dps * c.tick * power * (hit.crit ? c.critMul : 1);
+    const flat = Math.hypot(this._fwd.x, this._fwd.z) || 1;
+    const killed = this.enemies.damage(enemy, damage, {
+      dirX: this._fwd.x / flat, dirZ: this._fwd.z / flat, knock: c.knockback, stun: 0, rollScale: 0.12,
+    });
+    this.beamAcc += damage;
+    this.beamAccCrit = this.beamAccCrit || hit.crit;
+    this.beamAccTime += c.tick;
+    this.hud.hitmarker(hit.crit, killed);
+    if (killed) {
+      this.audio.enemyKill();
+      this._flushBeamNumber();
+    } else if (this.beamAccTime >= 0.3) {
+      this._flushBeamNumber();
+    }
+  }
+
+  _flushBeamNumber() {
+    if (this.beamAcc > 0 && this.beamAccEnemy) {
+      const power = this.beamPower(this.current);
+      this.hud.damageNumber(this._beamEnd, this.beamAcc, this.beamAccCrit ? 'crit' : 'normal', 0.7 + 0.3 * power, 0.3);
+    }
+    this.beamAcc = 0;
+    this.beamAccCrit = false;
+    this.beamAccTime = 0;
+    this.beamAccEnemy = null;
+  }
+
+  /** World-space beam: a white core, a scrolling additive sheath, and an impact glow. */
+  _createBeam(mainScene) {
+    const stripes = document.createElement('canvas');
+    stripes.width = 8;
+    stripes.height = 64;
+    const ctx = stripes.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, 0, 64);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.5, '#404040');
+    g.addColorStop(1, '#ffffff');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 8, 64);
+    const texture = new THREE.CanvasTexture(stripes);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+
+    const geometry = new THREE.CylinderGeometry(1, 1, 1, 14, 1, true);
+    geometry.rotateX(Math.PI / 2); // axis along Z so lookAt() aims it
+    const sheath = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+      map: texture, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+      side: THREE.DoubleSide, toneMapped: false, fog: false,
+    }));
+    const core = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, fog: false }));
+    const impact = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: makeGlowTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+    }));
+    sheath.frustumCulled = core.frustumCulled = false;
+    const group = new THREE.Group();
+    group.add(sheath, core, impact);
+    group.visible = false;
+    mainScene.add(group);
+    this.beam = { group, sheath, core, impact, texture };
+  }
+
+  /** Per rendered frame while firing: stretch the beam from the real muzzle to wherever the crosshair lands. */
+  _updateBeamVisual(dt, time, model) {
+    const w = this.current;
+    const c = w.cfg;
+    const power = this.beamPower(w);
+    const cam = this.camera;
+    const beam = this.beam;
+
+    // Muzzle position: viewmodel space -> world space (the viewmodel camera mirrors the main one's orientation).
+    this.anchor.updateMatrixWorld(true);
+    model.muzzle.getWorldPosition(this._muzzleW);
+    this._muzzleW.applyQuaternion(cam.quaternion).add(cam.position);
+
+    this._fwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    const origin = cam.position;
+    const wallT = this.world.raycast(origin, this._fwd, c.range);
+    const hit = this.enemies.raycast(origin, this._fwd, Math.min(c.range, wallT), c.beamRadius);
+    const endT = hit ? hit.t : Math.min(wallT, c.range);
+    const end = this._beamEnd.copy(origin).addScaledVector(this._fwd, endT);
+
+    const colour = glowColor(power, this._beamColor);
+    const length = Math.max(0.1, this._muzzleW.distanceTo(end));
+    const mid = this._tmp.addVectors(this._muzzleW, end).multiplyScalar(0.5);
+    const flicker = 1 + Math.sin(time * 70) * 0.12;
+    const widthScale = 0.45 + 0.55 * power; // the beam visibly thins as power falls off
+
+    for (const [mesh, radius] of [[beam.sheath, 0.034 * widthScale * flicker], [beam.core, 0.009 * widthScale]]) {
+      mesh.position.copy(mid);
+      mesh.lookAt(end);
+      mesh.scale.set(radius, radius, length);
+    }
+    beam.texture.repeat.set(1, length * 0.9);
+    beam.texture.offset.y -= dt * 5;
+    beam.sheath.material.color.copy(colour);
+    beam.core.material.color.set(0xffffff).lerp(colour, 0.3);
+
+    beam.impact.position.copy(end).addScaledVector(this._fwd, -0.05);
+    beam.impact.scale.setScalar(0.45 * (0.5 + 0.5 * power) * (0.85 + Math.random() * 0.3));
+    beam.impact.material.color.copy(colour);
+    if (Math.random() < 0.6) this.fx.particles.burst(end, colour.getHex(), 1, 3, 0.05, 0.25, 6);
+
+    this.worldLight.color.copy(colour);
+    this.worldLight.position.copy(end).addScaledVector(this._fwd, -0.6);
+    this.worldLight.intensity = 14 * power;
+    this.worldLightTime = 0.05;
+    this.flash.fire(0.3 * (1 - 0.5 * this.adsBlend), 5);
+    beam.group.visible = true;
+  }
+
   /* ------------------------------- reloading ----------------------------- */
 
   startReload() {
     const w = this.current;
     const c = w.cfg;
-    if (c.melee || this.reloading || w.mag >= c.mag || w.reserve <= 0) return;
+    if (c.melee || this.reloading) return;
+    const full = w.mag >= c.mag;
+    // A beam weapon can also recharge when full, if its power has fallen off: that is what resets it.
+    if (c.beam ? (full && w.beamTime <= 0) || (!full && w.reserve <= 0) : full || w.reserve <= 0) return;
+    this._stopBeam();
     this.reloading = true;
+    this.reloadFromEnergy = w.mag / c.mag;
+    if (c.beam) this.audio.recharge(c.reloadTime);
     this.triggerBuffer = 0;
     this.reloadStage = 0;
     if (c.perShell) {
@@ -509,6 +786,7 @@ export class Weapons {
         const n = Math.min(c.mag - w.mag, w.reserve);
         w.mag += n;
         w.reserve -= n;
+        w.beamTime = 0; // a fresh cell restores full beam power
         this.reloading = false;
       }
       return;
@@ -869,11 +1147,29 @@ export class Weapons {
       }
     }
 
+    // Beam: the whole weapon hums with a fine vibration while firing.
+    if (this.beamOn) {
+      const shake = 0.0025 * (1 - 0.7 * ads);
+      x += (Math.random() - 0.5) * shake;
+      y += (Math.random() - 0.5) * shake;
+      z += 0.008;
+    }
+
     if (model.parts.support) model.parts.support.object.position.y = model.parts.support.baseY - supportDrop;
     if (model.parts.hands) this._animateHands(model.parts.hands, dt, time, bobAmp, phase);
 
     this.anchor.position.set(x, y, z);
     this.anchor.rotation.set(rx, ry, rz);
+
+    if (model.animate) {
+      let energy = w.mag / c.mag;
+      if (this.reloading) { // core refills over the reload
+        const p = clamp(1 - this.reloadTimer / c.reloadTime, 0, 1);
+        energy = this.reloadFromEnergy + (Math.min(1, (w.mag + w.reserve) / c.mag) - this.reloadFromEnergy) * easeInOut(p);
+      }
+      model.animate(dt, time, { firing: this.beamOn, energy, power: this.beamPower(w), reloading: this.reloading });
+    }
+    if (this.beamOn) this._updateBeamVisual(dt, time, model);
 
     this.flash.update(dt);
     if (this.worldLightTime > 0) {

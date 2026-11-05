@@ -7,6 +7,7 @@ import { Weapons } from './weapons.js';
 import { Enemies } from './enemies.js';
 import { Pickups } from './pickups.js';
 import { Hud } from './hud.js';
+import { Inventory } from './inventory.js';
 import { AudioFX } from './audio.js';
 
 /* ========================================================================== *
@@ -123,6 +124,17 @@ const CONFIG = {
         heat: 2.5, tracerColor: 0x9ff3ff,
         ads: { x: 0, y: -0.08, z: -0.3, fovDrop: 14 },
       },
+      {
+        // XENO RAY: a continuous beam. `mag` is energy; it drains at drainRate per second of firing, so a
+        // full cell is mag/drainRate seconds of beam. Power starts at 100% and eases down to powerMin over
+        // falloffTime seconds of firing; ONLY a reload (recharge) restores it. Damage and beam width scale with it.
+        id: 'raygun', name: 'XENO RAY', beam: true, auto: true,
+        dps: 95, tick: 0.1, critMul: 1.5, range: 90, beamRadius: 0.12, knockback: 0.5,
+        mag: 100, reserve: 200, maxReserve: 300, drainRate: 12, reloadTime: 1.8,
+        falloffTime: 6, powerMin: 0.35,
+        flashTint: 0x55ffb0, flashSize: 0.3, worldLight: 0, heat: 0,
+        ads: { x: 0, y: -0.088, z: -0.3, fovDrop: 10 },
+      },
     ],
   },
 
@@ -191,7 +203,7 @@ const CONFIG = {
     collectRadius: 1.3,
     lifetime: 18,
     healthAmount: 25,
-    ammo: { pistol: 24, shotgun: 8, slug: 3, smg: 60 }, // keys match weapons (shotgun = buckshot) and ammoTypes[].pickupKey
+    ammo: { pistol: 24, shotgun: 8, slug: 3, smg: 60, raygun: 40 }, // keys match weapons (shotgun = buckshot) and ammoTypes[].pickupKey
   },
 };
 
@@ -230,8 +242,16 @@ const fx = createEffects(scene);
 const world = new World(scene, CONFIG);
 const player = new Player(camera, world, CONFIG.player);
 const enemies = new Enemies({ cfg: CONFIG, scene, world, fx, player });
-const weapons = new Weapons({ cfg: CONFIG, mainScene: scene, envMap, world, enemies, player, fx, hud, audio });
+const weapons = new Weapons({ cfg: CONFIG, camera, mainScene: scene, envMap, world, enemies, player, fx, hud, audio });
 const pickups = new Pickups(scene, CONFIG);
+const inventory = new Inventory({
+  weapons,
+  onResume: () => {
+    inventory.close();
+    audio.unlock();
+    requestLock();
+  },
+});
 
 const game = { kills: 0, time: 0 };
 
@@ -359,6 +379,24 @@ document.addEventListener('keydown', (e) => {
     audio.toggleMute();
     return;
   }
+  if (inventory.isOpen) {
+    // The menu is open and the pointer is free: keys pick slots or close it.
+    if (e.code === 'KeyI') inventory.onResume();
+    else if (e.code === 'Escape') {
+      inventory.close();
+      hud.showStart(player.alive);
+    } else if (e.code.startsWith('Digit') && e.code <= 'Digit3') inventory.selectSlot(Number(e.code.slice(5)) - 1);
+    else return;
+    e.preventDefault();
+    return;
+  }
+  if (e.code === 'KeyI' && player.alive && !e.repeat) {
+    inventory.open();
+    hud.showStart(false);
+    document.exitPointerLock(); // the game pauses while the pointer is free
+    e.preventDefault();
+    return;
+  }
   if (!locked) return;
   if (e.repeat) {
     e.preventDefault();
@@ -422,7 +460,7 @@ window.addEventListener('blur', () => input.clearAll());
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
   input.clearAll(); // avoid keys stuck "down" when focus changes
-  hud.showStart(!locked && player.alive);
+  hud.showStart(!locked && player.alive && !inventory.isOpen);
 });
 
 document.addEventListener('pointerlockerror', () => hud.showStart(player.alive));
@@ -496,6 +534,7 @@ function frame(now) {
   game.time += dt;
 
   const playing = locked && player.alive;
+  if (!playing) weapons.cease(); // never leave a beam (or its hum) running while paused
   let alpha = 1;
   if (playing) {
     accumulator += dt;
