@@ -107,9 +107,9 @@ const CONFIG = {
     crosshair: { base: 6, perSpeed: 1.1, air: 10 },
     quickMelee: { damage: 28, range: 2.8, cooldown: 0.5, knockback: 11, cone: 0.8, stun: 0.45 },
     list: [
-      { id: 'fists', name: 'FISTS', melee: true, damage: 20, interval: 0.3, range: 2.6, cone: 0.78, knockback: 9, stun: 0.45 },
+      { id: 'fists', name: 'WORK GLOVES', melee: true, damage: 20, interval: 0.3, range: 2.6, cone: 0.78, knockback: 9, stun: 0.45 },
       {
-        id: 'pistol', name: 'PISTOL', auto: false, damage: 24, interval: 0.2, mag: 12, reserve: 60, maxReserve: 96,
+        id: 'pistol', name: 'NAIL GUN', auto: false, damage: 24, interval: 0.2, mag: 12, reserve: 60, maxReserve: 96,
         reloadTime: 1.0, spread: 0.004, pellets: 1, range: 120, critMul: 2, knockback: 2.5, stun: 0.1,
         camKick: 0.018, camYaw: 0.004, climb: 0.002, kickZ: 0.022, kickRot: 0.07, flashSize: 0.3, worldLight: 25,
         heat: 5, tracerColor: 0xfff27a,
@@ -118,7 +118,7 @@ const CONFIG = {
       {
         // TAB swaps shell type. The shells in the tube go back to reserve, and you must reload
         // (shell by shell) with the new type. Fields in ammoTypes override the shared ones.
-        id: 'shotgun', name: 'SHOTGUN', auto: false, interval: 0.8, mag: 6, critMul: 2,
+        id: 'shotgun', name: 'RIVET BLASTER', auto: false, interval: 0.8, mag: 6, critMul: 2,
         perShell: true, startTime: 0.3, shellTime: 0.42, endTime: 0.25,
         camYaw: 0.008, kickRot: 0.12, worldLight: 40, heat: 14,
         ads: { x: 0, y: -0.057, z: -0.28, fovDrop: 8 },
@@ -127,14 +127,14 @@ const CONFIG = {
           buckshot: {
             // 8 fat pellets (pelletRadius = how forgiving each pellet is), each with its own damage
             // number. Damage tapers from falloffStart to falloffEnd down to falloffMin.
-            label: 'BUCKSHOT', pickupKey: 'shotgun', reserve: 24, maxReserve: 36,
+            label: 'RIVETS', pickupKey: 'shotgun', reserve: 24, maxReserve: 36,
             damage: 11, pellets: 8, spread: 0.055, pelletRadius: 0.1, range: 60,
             falloffStart: 5, falloffEnd: 25, falloffMin: 0.15, pelletNumbers: true,
             knockback: 8, stun: 0.25, camKick: 0.05, climb: 0.004, kickZ: 0.045, flashSize: 0.5, tracerColor: 0xffb347,
           },
           slug: {
             // One heavy, accurate, long-range projectile.
-            label: 'SLUG', pickupKey: 'slug', reserve: 8, maxReserve: 20,
+            label: 'ANCHOR BOLT', pickupKey: 'slug', reserve: 8, maxReserve: 20,
             interval: 0.95, damage: 62, pellets: 1, spread: 0.007, pelletRadius: 0.04, range: 140,
             falloffStart: 30, falloffEnd: 90, falloffMin: 0.6, pelletNumbers: false,
             knockback: 14, stun: 0.35, camKick: 0.075, climb: 0.008, kickZ: 0.06, flashSize: 0.55, tracerColor: 0xffe9b0,
@@ -142,17 +142,17 @@ const CONFIG = {
         },
       },
       {
-        id: 'smg', name: 'SMG', auto: true, damage: 7, interval: 0.075, mag: 30, reserve: 120, maxReserve: 180,
+        id: 'smg', name: 'FRAMING NAILER', auto: true, damage: 7, interval: 0.075, mag: 30, reserve: 120, maxReserve: 180,
         reloadTime: 1.5, spread: 0.02, pellets: 1, range: 90, critMul: 2, knockback: 1.2, stun: 0.05,
         camKick: 0.007, camYaw: 0.006, climb: 0.0045, kickZ: 0.014, kickRot: 0.035, flashSize: 0.22, worldLight: 18,
         heat: 2.5, tracerColor: 0x9ff3ff,
         ads: { x: 0, y: -0.08, z: -0.3, fovDrop: 14 },
       },
       {
-        // XENO RAY: a continuous beam. `mag` is energy; it drains at drainRate per second of firing, so a
+        // ARC TORCH: a continuous beam. `mag` is energy; it drains at drainRate per second of firing, so a
         // full cell is mag/drainRate seconds of beam. Power starts at 100% and eases down to powerMin over
         // falloffTime seconds of firing; ONLY a reload (recharge) restores it. Damage and beam width scale with it.
-        id: 'raygun', name: 'XENO RAY', beam: true, auto: true,
+        id: 'raygun', name: 'ARC TORCH', beam: true, auto: true,
         dps: 95, tick: 0.1, critMul: 1.5, range: 90, beamRadius: 0.12, knockback: 0.5,
         mag: 100, reserve: 200, maxReserve: 300, drainRate: 12, reloadTime: 1.8,
         falloffTime: 6, powerMin: 0.35,
@@ -160,9 +160,9 @@ const CONFIG = {
         ads: { x: 0, y: -0.088, z: -0.3, fovDrop: 10 },
       },
       {
-        // Bolt-action sniper. `scope` hides the gun and draws a scope overlay while aiming; fovDrop is the zoom.
+        // Bolt-action surveyor's transit rifle (the sniper). `scope` hides the gun and draws a scope overlay while aiming; fovDrop is the zoom.
         // It is very accurate when aimed, but the hip shot wanders (spread).
-        id: 'sniper', name: 'SNIPER', auto: false, boltAction: true, scope: true, damage: 96, interval: 1.35,
+        id: 'sniper', name: 'TRANSIT RIFLE', auto: false, boltAction: true, scope: true, damage: 96, interval: 1.35,
         mag: 5, reserve: 20, maxReserve: 40, reloadTime: 2.4, spread: 0.05, adsSpreadCut: 0.99, adsAccurateAt: 0.55, adsSpeed: 24, pellets: 1, range: 250, critMul: 2.5,
         knockback: 16, stun: 0.5, camKick: 0.07, camYaw: 0.01, climb: 0.012, kickZ: 0.06, kickRot: 0.12,
         flashSize: 0.5, worldLight: 40, heat: 16, tracerColor: 0xbfe8ff,
@@ -200,22 +200,43 @@ const CONFIG = {
     ambushRange: 4.5, // hiding bots charge out if you get this close
     rushTime: 1.5,
     rushMul: 1.35,
-    // color = vest/suit, head = cable-box head. 
-    // color = vest, head = cable-box head. scale 1 = a 1.7 m tall bot.
+    // color = hi-vis vest, head = cable-box head, hat = hard hat colour. scale 1 = a 1.7 m tall bot.
+    // Extra looks (all optional): extraEar, stripes (reflective bands), spool (cable reel backpack),
+    // jackhammer (big drill in the hands), cone (traffic cone for a hat), visor (welding mask).
     // ai: cover = chance (scaled by how hurt) to run for cover when hit; dodge = chance to sidestep when
     // aimed at; hop = chance a dodge includes a jump; leap = leaps per second when 3.5-7 m away.
     types: {
       router: {
-        hp: 28, speed: 6.2, scale: 0.75, damage: 6, color: 0xdfe6ea, head: 0xf1f4f5, mass: 0.8, stunMul: 1, extraEar: true,
+        hp: 28, speed: 6.2, scale: 0.75, damage: 6, hat: 0xffffff, color: 0xdfe6ea, head: 0xf1f4f5, mass: 0.8, stunMul: 1, extraEar: true,
         ai: { cover: 0.15, dodge: 0.85, dodgeCooldown: 1.0, hop: 0.4, leap: 0.3 },
       },
       cable: {
-        hp: 70, speed: 3.6, scale: 1, damage: 10, color: 0x6a2fd6, head: 0x1a1b1f, mass: 1, stunMul: 1,
+        hp: 70, speed: 3.6, scale: 1, damage: 10, hat: 0xff7a00, color: 0x6a2fd6, head: 0x1a1b1f, mass: 1, stunMul: 1,
         ai: { cover: 0.5, dodge: 0.5, dodgeCooldown: 1.8, hop: 0.25, leap: 0 },
       },
       technician: {
-        hp: 260, speed: 2.2, scale: 1.2, damage: 22, color: 0xff7a00, head: 0x2a2b30, mass: 3, stunMul: 0.35, hat: true, stripes: true,
+        hp: 260, speed: 2.2, scale: 1.2, damage: 22, color: 0xff7a00, head: 0x2a2b30, mass: 3, stunMul: 0.35, hat: 0xe8b800, stripes: true,
         ai: { cover: 0.1, dodge: 0.1, dodgeCooldown: 3, hop: 0, leap: 0 },
+      },
+      lineman: { // pole climber: quick on its feet, hops a lot, carries a cable reel
+        hp: 45, speed: 4.8, scale: 0.95, damage: 8, color: 0xffd400, head: 0x1a1b1f, hat: 0xffffff, mass: 0.9, stunMul: 1, spool: true, stripes: true,
+        ai: { cover: 0.2, dodge: 0.7, dodgeCooldown: 1.2, hop: 0.6, leap: 0.15 },
+      },
+      splicer: { // glass-fibre splicer: fragile and fast, wears a welding visor
+        hp: 22, speed: 7, scale: 0.8, damage: 5, color: 0x1ec6d6, head: 0x20242a, hat: 0x1ec6d6, mass: 0.7, stunMul: 1.2, visor: true,
+        ai: { cover: 0.1, dodge: 0.9, dodgeCooldown: 0.8, hop: 0.5, leap: 0.4 },
+      },
+      foreman: { // tough and cautious: ducks behind cover often
+        hp: 150, speed: 3, scale: 1.1, damage: 16, color: 0xff7a00, head: 0x2a2b30, hat: 0xffffff, mass: 1.8, stunMul: 0.6, stripes: true, extraEar: true,
+        ai: { cover: 0.8, dodge: 0.3, dodgeCooldown: 2.2, hop: 0.1, leap: 0 },
+      },
+      jackhammer: { // slow heavy hitter with a drill
+        hp: 420, speed: 1.9, scale: 1.35, damage: 30, color: 0xf2c200, head: 0x2a2b30, hat: 0xff7a00, mass: 4, stunMul: 0.25, stripes: true, jackhammer: true,
+        ai: { cover: 0.05, dodge: 0.05, dodgeCooldown: 4, hop: 0, leap: 0 },
+      },
+      coneHead: { // cheap fodder wearing a traffic cone
+        hp: 36, speed: 4.2, scale: 0.9, damage: 7, color: 0xff7a00, head: 0x1a1b1f, mass: 0.9, stunMul: 1, cone: true,
+        ai: { cover: 0.3, dodge: 0.5, dodgeCooldown: 1.5, hop: 0.3, leap: 0 },
       },
     },
   },
@@ -246,6 +267,7 @@ const CONFIG = {
 
   // DEATHMATCH VS BOTS (see bot-match.js): the deathmatch rules, played alone against the cable bots
   botMatch: {
+    unlimited: true, // solo practice: infinite health and ammo. Set false for the normal rules (respawns, protection, limited ammo)
     botCount: 6, // bots kept alive at once (enemies.maxAlive is the hard cap)
     spawnInterval: 1.5, // seconds between topping the bots back up
     speedMul: 1.1,
@@ -447,6 +469,17 @@ pickups.onCollect = (kind) => {
 /* ========================================================================== *
  *  Wave director: spawns bots in growing, speeding-up waves
  * ========================================================================== */
+const WAVE_TYPES = [
+  { type: 'cable', from: 1, weight: 5 },
+  { type: 'router', from: 1, weight: 3 },
+  { type: 'coneHead', from: 2, weight: 3 },
+  { type: 'lineman', from: 3, weight: 2.5 },
+  { type: 'splicer', from: 4, weight: 2 },
+  { type: 'technician', from: 3, weight: 1.5 },
+  { type: 'foreman', from: 5, weight: 1.5 },
+  { type: 'jackhammer', from: 6, weight: 1 },
+];
+
 const director = {
   wave: 0,
   toSpawn: 0,
@@ -473,11 +506,15 @@ const director = {
     hud.banner(`WAVE ${n}`);
   },
 
+  /** Weighted pick among the types unlocked by this wave (`from`), so new kinds show up as waves go on. */
   pickType() {
-    const techChance = this.wave >= 3 ? Math.min(0.25, 0.07 * (this.wave - 2)) : 0;
-    if (Math.random() < techChance) return 'technician';
-    const routerChance = Math.min(0.5, 0.3 + 0.03 * this.wave);
-    return Math.random() < routerChance ? 'router' : 'cable';
+    const table = WAVE_TYPES.filter((entry) => this.wave >= entry.from);
+    let roll = Math.random() * table.reduce((sum, entry) => sum + entry.weight, 0);
+    for (const entry of table) {
+      roll -= entry.weight;
+      if (roll <= 0) return entry.type;
+    }
+    return table[0].type;
   },
 
   update(dt) {

@@ -25,7 +25,11 @@ const MAT = {
   polymer: material(0x1b1c1e, { roughness: 0.6 }),
   wood: material(0x6b4423, { roughness: 0.65 }),
   brass: material(0xb08a2e, { metalness: 0.9, roughness: 0.3 }),
-  accent: material(0x7a3cff, { roughness: 0.5 }), // faint cable-company purple trim
+  accent: material(0x7a3cff, { roughness: 0.5 }), // telecom purple trim
+  hazard: material(0xf2c200, { roughness: 0.45, metalness: 0.15 }), // construction-yellow housings
+  orange: material(0xff6a00, { roughness: 0.5 }),
+  rubber: material(0x121212, { roughness: 0.9 }),
+  hose: material(0x1f6fd6, { roughness: 0.5 }), // air hose
   glove: material(0x0b0d0c, { metalness: 0.85, roughness: 0.34 }), // black cybernetic hand
   sleeve: material(0x1d2421, { metalness: 0.8, roughness: 0.4 }), // dark armoured forearm
   glow: new THREE.MeshStandardMaterial({ color: 0x04120a, emissive: 0x2dff6a, emissiveIntensity: 1.8, roughness: 0.4 }),
@@ -94,17 +98,22 @@ function makeArm(side, palmRoll, sleeveDir) {
 
 function buildPistol() {
   const root = new THREE.Group();
-  const grip = at(box(0.055, 0.15, 0.07, MAT.polymer), 0, -0.085, 0.045);
+  const grip = at(box(0.055, 0.15, 0.07, MAT.rubber), 0, -0.085, 0.045);
   grip.rotation.x = 0.2;
   const rightArm = at(makeArm(1, -Math.PI / 2, [0.25, -0.5, 1]), 0.052, -0.09, 0.05);
   const leftArm = at(makeArm(-1, Math.PI / 2, [-0.25, -0.5, 1]), -0.052, -0.11, 0.04);
+  const strip = at(box(0.03, 0.04, 0.2, MAT.brass), 0, -0.04, -0.1); // strip of nails
+  strip.rotation.x = -0.12;
   root.add(
-    at(box(0.062, 0.07, 0.3, MAT.metal), 0, 0.04, -0.1), // slide
-    at(box(0.058, 0.045, 0.26, MAT.polymer), 0, -0.002, -0.08), // frame
+    at(box(0.062, 0.07, 0.3, MAT.hazard), 0, 0.04, -0.1), // yellow housing
+    at(box(0.064, 0.012, 0.12, MAT.orange), 0, 0.072, -0.05), // orange cap, below the sight line
+    at(box(0.058, 0.045, 0.26, MAT.metal), 0, -0.002, -0.08), // frame
     grip,
+    strip,
     at(box(0.01, 0.02, 0.01, MAT.steel), 0, 0.083, -0.24), // front sight
     at(box(0.032, 0.02, 0.012, MAT.steel), 0, 0.083, 0.05), // rear sight (tops of both sights line up for ADS)
-    at(barrelPart(0.014, 0.05, MAT.steel), 0, 0.04, -0.26),
+    at(box(0.03, 0.03, 0.05, MAT.steel), 0, 0.04, -0.27), // nose piece
+    at(barrelPart(0.01, 0.07, MAT.hose), 0, -0.16, 0.08), // air hose stub under the grip
     rightArm,
     leftArm,
   );
@@ -115,18 +124,20 @@ function buildPistol() {
 
 function buildShotgun() {
   const root = new THREE.Group();
-  const pump = at(box(0.075, 0.06, 0.2, MAT.wood), 0, -0.045, -0.25);
+  const pump = at(box(0.075, 0.06, 0.2, MAT.orange), 0, -0.045, -0.25);
   const leftArm = at(makeArm(-1, Math.PI, [-0.3, -0.35, 1]), 0, -0.055, 0); // palm up, wrapped under the pump
   pump.add(leftArm);
   const rightArm = at(makeArm(1, -Math.PI / 2, [0.3, -0.45, 1]), 0.05, -0.09, 0.22);
   root.add(
     at(barrelPart(0.022, 0.75, MAT.metal), 0, 0.02, -0.3),
     at(barrelPart(0.018, 0.5, MAT.steel), 0, -0.025, -0.18), // magazine tube
-    at(box(0.075, 0.095, 0.3, MAT.metal), 0, 0, 0.1), // receiver
+    at(box(0.075, 0.095, 0.3, MAT.hazard), 0, 0, 0.1), // yellow housing
     pump,
-    at(box(0.055, 0.12, 0.06, MAT.wood), 0, -0.085, 0.21), // pistol grip
-    at(box(0.06, 0.11, 0.3, MAT.wood), 0, -0.03, 0.4), // stock
-    at(box(0.062, 0.01, 0.1, MAT.accent), 0, 0.054, 0.1), // trim stripe
+    at(box(0.055, 0.12, 0.06, MAT.rubber), 0, -0.085, 0.21), // pistol grip
+    at(box(0.06, 0.11, 0.3, MAT.hazard), 0, -0.03, 0.4), // stock
+    at(box(0.062, 0.01, 0.1, MAT.rubber), 0, 0.054, 0.1), // hazard stripe
+    at(barrelPart(0.026, 0.12, MAT.steel), 0, 0.02, -0.5), // steel shroud, kept under the sight line
+    at(box(0.03, 0.05, 0.05, MAT.hose), 0.055, 0.0, 0.2), // air fitting on the side
     at(box(0.01, 0.015, 0.01, MAT.brass), 0, 0.045, -0.66), // bead sight
     rightArm,
   );
@@ -140,21 +151,25 @@ function buildShotgun() {
 
 function buildSmg() {
   const root = new THREE.Group();
-  const mag = at(box(0.045, 0.19, 0.065, MAT.polymer), 0, -0.14, -0.05);
+  const mag = new THREE.Group(); // coil of nails: a flat drum below the receiver
+  const drum = barrelPart(0.1, 0.06, MAT.hazard);
+  drum.rotation.set(0, 0, Math.PI / 2);
+  mag.add(drum, at(barrelPart(0.045, 0.07, MAT.steel), 0, 0, 0), at(box(0.04, 0.05, 0.14, MAT.brass), 0, 0.1, -0.06));
+  mag.position.set(0, -0.15, -0.05);
   const grip = at(box(0.055, 0.13, 0.065, MAT.polymer), 0, -0.1, 0.13);
   grip.rotation.x = 0.15;
   const rightArm = at(makeArm(1, -Math.PI / 2, [0.3, -0.45, 1]), 0.052, -0.1, 0.13);
   const leftArm = at(makeArm(-1, Math.PI, [-0.3, -0.35, 1]), 0, -0.07, -0.19); // under the handguard
   root.add(
-    at(box(0.07, 0.1, 0.4, MAT.metal), 0, 0, 0), // receiver
-    at(box(0.074, 0.06, 0.2, MAT.polymer), 0, -0.01, -0.22), // handguard
+    at(box(0.07, 0.1, 0.4, MAT.hazard), 0, 0, 0), // yellow housing
+    at(box(0.074, 0.06, 0.2, MAT.metal), 0, -0.01, -0.22), // nose
     at(barrelPart(0.015, 0.2, MAT.steel), 0, 0.01, -0.4),
     mag,
     grip,
-    at(box(0.045, 0.06, 0.2, MAT.polymer), 0, 0, 0.3), // stock
+    at(box(0.045, 0.06, 0.2, MAT.rubber), 0, 0, 0.3), // handle
     at(box(0.03, 0.03, 0.08, MAT.steel), 0, 0.065, -0.05), // rear sight
     at(box(0.01, 0.055, 0.01, MAT.steel), 0, 0.0525, -0.5), // front post
-    at(box(0.072, 0.012, 0.15, MAT.accent), 0, 0.052, -0.2),
+    at(box(0.072, 0.012, 0.15, MAT.orange), 0, 0.052, -0.2),
     rightArm,
     leftArm,
   );
@@ -181,12 +196,12 @@ function buildSniper() {
   root.add(
     at(barrelPart(0.014, 0.75, MAT.metal), 0, 0.02, -0.52), // long barrel
     at(barrelPart(0.021, 0.09, MAT.steel), 0, 0.02, -0.9), // muzzle brake
-    at(box(0.06, 0.09, 0.36, MAT.polymer), 0, 0, 0.08), // receiver
-    at(box(0.056, 0.07, 0.34, MAT.polymer), 0, -0.02, -0.3), // forend
+    at(box(0.06, 0.09, 0.36, MAT.hazard), 0, 0, 0.08), // receiver
+    at(box(0.056, 0.07, 0.34, MAT.hazard), 0, -0.02, -0.3), // forend
     at(box(0.05, 0.1, 0.07, MAT.metal), 0, -0.085, 0.0), // magazine
-    at(box(0.05, 0.12, 0.055, MAT.polymer), 0, -0.085, 0.21), // grip
-    at(box(0.055, 0.12, 0.34, MAT.polymer), 0, -0.02, 0.45), // stock
-    at(box(0.058, 0.03, 0.12, MAT.accent), 0, 0.075, 0.5), // cheek rest
+    at(box(0.05, 0.12, 0.055, MAT.rubber), 0, -0.085, 0.21), // grip
+    at(box(0.055, 0.12, 0.34, MAT.hazard), 0, -0.02, 0.45), // stock
+    at(box(0.058, 0.03, 0.12, MAT.orange), 0, 0.075, 0.5), // cheek rest
     // Scope: a tube on two mounts with a bigger objective bell at the front.
     at(barrelPart(0.026, 0.3, MAT.metal), 0, 0.09, 0.0),
     at(barrelPart(0.036, 0.09, MAT.metal), 0, 0.09, -0.19),
@@ -229,7 +244,7 @@ function buildFists() {
     const hand = new THREE.Group();
     hand.add(
       box(0.085, 0.085, 0.11, MAT.glove), // fist
-      at(box(0.09, 0.02, 0.03, MAT.steel), 0, 0.035, -0.06), // knuckle guard plate
+      at(box(0.09, 0.02, 0.03, MAT.hazard), 0, 0.035, -0.06), // hi-vis knuckle guard
       at(box(0.03, 0.04, 0.06, MAT.glove), -side * 0.05, 0.0, -0.01),
     );
     hand.add(makeSleeve([side * 0.2, -0.3, 1]));

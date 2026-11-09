@@ -3,8 +3,8 @@ import { material } from './effects.js';
 
 /*
  * CABLE BOTS
- * Human-proportioned (about 1.7 m) cable-company technician robots: a cable-box
- * head with a glowing "12:00" clock face and antenna ears, work vest over a long-
+ * Human-proportioned (about 1.7 m) telecom construction-crew robots: a cable-box
+ * head with a glowing "12:00" clock face and antenna ears, hard hat, hi-vis vest over a long-
  * sleeved shirt, gloves, work pants and boots, with a coax coil on the belt.
  * Original design: no real logos or trademarks.
  *
@@ -76,6 +76,15 @@ const GEO = {
   coil: new THREE.TorusGeometry(0.06, 0.016, 6, 12),
   hat: new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
   brim: new THREE.CylinderGeometry(0.2, 0.2, 0.025, 12),
+  belt: new THREE.BoxGeometry(0.42, 0.06, 0.25),
+  pouch: new THREE.BoxGeometry(0.07, 0.09, 0.06),
+  reel: new THREE.CylinderGeometry(0.15, 0.15, 0.06, 14),
+  reelCore: new THREE.CylinderGeometry(0.05, 0.05, 0.1, 8),
+  drill: new THREE.CylinderGeometry(0.045, 0.05, 0.42, 8),
+  chisel: new THREE.ConeGeometry(0.03, 0.2, 6),
+  cone: new THREE.ConeGeometry(0.14, 0.34, 12),
+  coneBase: new THREE.BoxGeometry(0.3, 0.025, 0.3),
+  visor: new THREE.BoxGeometry(0.24, 0.07, 0.03),
   wheel: new THREE.RingGeometry(0.12, 0.22, 16, 1, 0, 4.6),
   blob: new THREE.CircleGeometry(0.5, 14),
 };
@@ -250,15 +259,27 @@ export class Enemies {
       ear.rotation.z = spec.tilt;
       head.add(ear);
     }
-    if (def.hat) { // Technician hard hat
-      const hatMat = material(0xe8b800, { roughness: 0.4 });
-      mats.push(hatMat);
-      const hat = this._mesh(GEO.hat, hatMat);
-      hat.position.y = 0.11;
-      const brim = this._mesh(GEO.brim, hatMat);
-      brim.position.y = 0.11;
-      head.add(hat, brim);
+    if (def.hat !== undefined) this._addHardHat(head, def.hat, mats);
+    if (def.cone) this._addCone(head, mats);
+    if (def.visor) { // welding visor over the clock face
+      const visorMat = new THREE.MeshBasicMaterial({ color: 0x35f0ff, toneMapped: false });
+      const visor = new THREE.Mesh(GEO.visor, visorMat);
+      visor.position.set(0, 0.02, 0.15);
+      head.add(visor);
     }
+
+    // Tool belt with pouches, on every bot.
+    const beltMat = material(0x4a3420, { roughness: 0.8 });
+    mats.push(beltMat);
+    const belt = this._mesh(GEO.belt, beltMat);
+    belt.position.y = 0.03;
+    upper.add(belt);
+    for (const x of [-0.12, 0.06]) {
+      const pouch = this._mesh(GEO.pouch, beltMat);
+      pouch.position.set(x, 0.0, 0.14);
+      upper.add(pouch);
+    }
+    if (def.spool) this._addReel(upper, cableMat, mats);
 
     // Arms: shirt sleeve to the elbow, then a coax-cable forearm, gloved hand.
     const arms = [];
@@ -272,6 +293,7 @@ export class Enemies {
       const glove = this._mesh(GEO.glove, gloveMat);
       glove.position.y = -0.33;
       elbow.add(glove);
+      if (def.jackhammer && side === 1) this._addJackhammer(elbow, mats);
       shoulder.add(elbow);
       upper.add(shoulder);
       arms.push({ shoulder, elbow, side });
@@ -306,6 +328,63 @@ export class Enemies {
       // cover
       state: 'advance', coverX: 0, coverZ: 0, coverT: 0, hideT: 0, coverCd: 0, crouch: 0, rush: 0,
     };
+  }
+
+  /** Hard hat in the type's colour, with a front ridge. */
+  _addHardHat(head, color, mats) {
+    const hatMat = material(color, { roughness: 0.4 });
+    mats.push(hatMat);
+    const hat = this._mesh(GEO.hat, hatMat);
+    hat.position.y = 0.11;
+    const brim = this._mesh(GEO.brim, hatMat);
+    brim.position.y = 0.11;
+    head.add(hat, brim);
+  }
+
+  /** A traffic cone worn as a hat: orange cone, white band, wide base. */
+  _addCone(head, mats) {
+    const coneMat = material(0xff6a00, { roughness: 0.5 });
+    const bandMat = material(0xf4f4f4, { roughness: 0.5 });
+    mats.push(coneMat, bandMat);
+    const cone = this._mesh(GEO.cone, coneMat);
+    cone.position.y = 0.3;
+    const band = this._mesh(new THREE.CylinderGeometry(0.085, 0.1, 0.07, 12), bandMat);
+    band.position.y = 0.3;
+    const base = this._mesh(GEO.coneBase, coneMat);
+    base.position.y = 0.13;
+    head.add(cone, band, base);
+  }
+
+  /** A cable reel on the back (model faces +Z, so the back is -Z). */
+  _addReel(upper, cableMat, mats) {
+    const reelMat = material(0xc8c8c8, { roughness: 0.4, metalness: 0.5 });
+    mats.push(reelMat);
+    const reel = new THREE.Group();
+    for (const z of [-0.04, 0.04]) {
+      const flange = this._mesh(GEO.reel, reelMat);
+      flange.rotation.x = Math.PI / 2;
+      flange.position.z = z;
+      reel.add(flange);
+    }
+    const wound = this._mesh(GEO.reelCore, cableMat);
+    wound.rotation.x = Math.PI / 2;
+    wound.scale.set(2.2, 0.8, 2.2);
+    reel.add(wound);
+    reel.position.set(0, 0.32, -0.2);
+    upper.add(reel);
+  }
+
+  /** A pneumatic drill held in the right hand. */
+  _addJackhammer(elbow, mats) {
+    const bodyMat = material(0xffc400, { roughness: 0.45 });
+    const steelMat = material(0x8a9096, { roughness: 0.3, metalness: 0.8 });
+    mats.push(bodyMat, steelMat);
+    const body = this._mesh(GEO.drill, bodyMat);
+    body.position.set(0, -0.4, 0.06);
+    const chisel = this._mesh(GEO.chisel, steelMat);
+    chisel.rotation.x = Math.PI;
+    chisel.position.set(0, -0.72, 0.06);
+    elbow.add(body, chisel);
   }
 
   _acquire(key) {

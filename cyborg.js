@@ -45,6 +45,11 @@ const MAT = {
   green: material(0x16a03c, { metalness: 0.55, roughness: 0.42 }), // painted armour panels
   joint: material(0x39403d, { metalness: 0.9, roughness: 0.3 }),
   glow: glow(0x2dff6a, 1.8), // visor, core, light strips
+  hat: material(0xf2c200, { roughness: 0.4 }), // hard hat
+  vest: material(0xff6a00, { roughness: 0.6 }), // hi-vis vest
+  reflect: material(0xdfe3e6, { metalness: 0.6, roughness: 0.3 }), // reflective bands
+  leather: material(0x4a3420, { roughness: 0.8 }), // tool belt
+  cable: material(0x7a3cff, { roughness: 0.5 }), // fibre cable wound on the reel
 };
 
 // Soft radial falloff so the blob shadow has no hard black edge.
@@ -147,7 +152,14 @@ export class Cyborg {
       mesh(new THREE.BoxGeometry(0.42, 0.32, 0.05), MAT.green, 0, 0.3, -0.16), // front armour plate
       core,
       mesh(new THREE.BoxGeometry(0.3, 0.08, 0.2), MAT.plate, 0, 0.55, 0), // collar
+      // Hi-vis vest over the chest: front panel, back panel and two reflective bands round the body.
+      mesh(new THREE.BoxGeometry(0.56, 0.3, 0.02), MAT.vest, 0, 0.2, -0.155),
+      mesh(new THREE.BoxGeometry(0.56, 0.3, 0.02), MAT.vest, 0, 0.2, 0.155),
+      mesh(new THREE.BoxGeometry(0.57, 0.04, 0.32), MAT.reflect, 0, 0.14, 0),
+      mesh(new THREE.BoxGeometry(0.57, 0.04, 0.32), MAT.reflect, 0, 0.27, 0),
     );
+    this.hips.add(mesh(new THREE.BoxGeometry(0.46, 0.06, 0.3), MAT.leather, 0, 0.66, 0)); // tool belt
+    for (const x of [-0.17, 0.12]) this.hips.add(mesh(new THREE.BoxGeometry(0.08, 0.1, 0.06), MAT.leather, x, 0.61, -0.16));
 
     // Back pack with glowing vents; it tilts with movement.
     this.pack = new THREE.Group();
@@ -158,6 +170,11 @@ export class Cyborg {
       mesh(new THREE.BoxGeometry(0.26, 0.03, 0.02), MAT.glow, 0, 0.02, 0.11),
       mesh(new THREE.BoxGeometry(0.26, 0.03, 0.02), MAT.glow, 0, -0.06, 0.11),
     );
+    // Cable reel strapped on top of the pack: two flanges and a wound fibre core.
+    for (const x of [-0.08, 0.08]) {
+      this.pack.add(mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.02, 12), MAT.reflect, x, 0.28, 0.06).rotateZ(Math.PI / 2));
+    }
+    this.pack.add(mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.12, 12), MAT.cable, 0, 0.28, 0.06).rotateZ(Math.PI / 2));
     this.torso.add(this.pack);
 
     // Head (pivot at the neck): boxy skull, glowing visor, side sensors and an antenna.
@@ -167,7 +184,9 @@ export class Cyborg {
     this.head.add(
       mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 8), MAT.joint, 0, -0.02, 0), // neck
       mesh(new THREE.BoxGeometry(0.3, 0.27, 0.3), MAT.black, 0, 0.14, 0), // skull
-      mesh(new THREE.BoxGeometry(0.31, 0.06, 0.31), MAT.green, 0, 0.29, 0), // crown plate
+      mesh(new THREE.SphereGeometry(0.19, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), MAT.hat, 0, 0.27, 0), // hard hat dome
+      mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.02, 14), MAT.hat, 0, 0.27, -0.03), // brim, longer at the front
+      mesh(new THREE.BoxGeometry(0.04, 0.03, 0.34), MAT.hat, 0, 0.455, 0), // ridge
       mesh(new THREE.BoxGeometry(0.24, 0.07, 0.02), MAT.glow, 0, 0.16, -0.155), // visor
       mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05, 8), MAT.joint, -0.17, 0.14, 0).rotateZ(Math.PI / 2), // ears
       mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05, 8), MAT.joint, 0.17, 0.14, 0).rotateZ(Math.PI / 2),

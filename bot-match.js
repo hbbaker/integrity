@@ -13,7 +13,7 @@ import { HealthRegen } from './regen.js';
 
 const PLAYER_ROW_ID = 1;
 const BOTS_ROW_ID = 2;
-const BOT_TYPE_WEIGHTS = [['cable', 0.5], ['router', 0.35], ['technician', 0.15]];
+const BOT_TYPE_WEIGHTS = [['cable', 0.25], ['router', 0.15], ['coneHead', 0.15], ['lineman', 0.12], ['splicer', 0.1], ['technician', 0.08], ['foreman', 0.1], ['jackhammer', 0.05]];
 
 export class BotMatch {
   /**
@@ -46,6 +46,7 @@ export class BotMatch {
 
   start() {
     this.active = true;
+    this.weapons.infiniteAmmo = Boolean(this.config.unlimited);
     this.kills = 0;
     this.deaths = 0;
     this.wins = 0;
@@ -62,6 +63,7 @@ export class BotMatch {
   stop() {
     this.active = false;
     this.player.invulnerable = false;
+    this.weapons.infiniteAmmo = false;
     this.scoreboard.setVisible(false);
     this.scoreboard.setMiniVisible(false);
     this.scoreboard.setRespawn(null);
@@ -98,7 +100,7 @@ export class BotMatch {
   /* ------------------------------- internals ------------------------------- */
 
   _updateTimers(dt) {
-    if (this.protectTimer > 0) {
+    if (this.protectTimer > 0 && !this.config.unlimited) {
       this.protectTimer -= dt;
       if (this.protectTimer <= 0) this.player.invulnerable = false;
     }
@@ -143,7 +145,7 @@ export class BotMatch {
     player.reset();
     this.weapons.reset();
     this.cyborg.reset();
-    player.invulnerable = true;
+    player.invulnerable = true; // lasts for spawnProtect seconds, or the whole match when unlimited
     this.protectTimer = this.config.spawnProtect;
     this.respawnTimer = 0;
     this.regen.reset(player.health);
