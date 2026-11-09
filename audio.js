@@ -120,6 +120,31 @@ export class AudioFX {
     this.bus = this.master;
   }
 
+  /** A shovel biting into earth: a dull thump and a scrape. Deeper layers sound lower. */
+  dig(depthInches = 6) {
+    const low = Math.max(60, 150 - depthInches * 0.6);
+    this._tone('sine', low * 1.6, low * 0.5, 0.14, 0.5);
+    this._noise(0.18, 'bandpass', 900, 300, 0.45);
+  }
+
+  /** The same sound from another player, quieter with distance. */
+  digAt(distance, depthInches) {
+    if (!this.ctx || this.muted) return;
+    const gain = this.ctx.createGain();
+    gain.gain.value = 1 / (1 + distance / DISTANT_SOUND_RANGE);
+    gain.connect(this.master);
+    this.bus = gain;
+    this.dig(depthInches);
+    this.bus = this.master;
+  }
+
+  /** A buried line was hit: a harsh zap and a thud. */
+  strike() {
+    this._tone('sawtooth', 320, 50, 0.35, 0.55);
+    this._tone('square', 120, 40, 0.4, 0.4);
+    this._noise(0.3, 'lowpass', 2500, 200, 0.7);
+  }
+
   punch(hit) {
     if (hit) {
       this._noise(0.09, 'lowpass', 700, 150, 1.0);

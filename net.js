@@ -27,7 +27,8 @@ export function isValidName(name) {
 
 export class NetClient {
   /**
-   * @param handlers { onStatus(status), onRoster(players), onJoinError(code), onMessage(fromId, message) }
+   * @param handlers { onStatus(status), onRoster(players), onJoinError(code), onMessage(fromId, message), onDig(message) }
+   * onDig receives the server's DIG SITE messages (their names start with dg_).
    */
   constructor(handlers) {
     this.handlers = handlers;
@@ -111,8 +112,14 @@ export class NetClient {
         break;
       }
       default:
+        if (typeof message.t === 'string' && message.t.startsWith('dg_')) this.handlers.onDig(message);
         break;
     }
+  }
+
+  /** Send a DIG SITE message (dg_join, dg_start, dg_dig ...). Unlike send(), it needs no deathmatch join. */
+  sendDig(message) {
+    this._send(message);
   }
 
   _closed(socket) {

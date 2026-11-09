@@ -1,4 +1,6 @@
 import { pickSpawnPoint } from './spawn.js';
+import { poseMessage } from './pose-message.js';
+import { HealthRegen } from './regen.js';
 
 /*
  * The deathmatch rules and the network traffic that goes with them.
@@ -17,7 +19,6 @@ import { pickSpawnPoint } from './spawn.js';
  */
 
 const MAX_HIT_DAMAGE = 400; // one sniper crit is 240; reject anything absurd
-const BOARD_REFRESH = 0.25; // seconds between scoreboard redraws while it is visible
 const AMMO_SHARE = 0.6; // of the crates the spawner makes, this share is ammo and the rest health
 const PICKUP_ID_STRIDE = 1e6; // pickup ids are playerId * stride + counter, so they never clash
 const round2 = (value) => Math.round(value * 100) / 100;
@@ -47,12 +48,10 @@ export class Deathmatch {
     this.respawnTimer = 0;
     this.protectTimer = 0;
     this.sendTimer = 0;
-    this.boardTimer = 0;
     this.restartTimer = 0;
     this.over = false;
     this.winnerId = 0;
-    this.sinceDamage = 0;
-    this.lastHealth = 0;
+    this.regen = new HealthRegen({ delay: config.regenDelay, rate: config.regenRate });
     this.spawnTimer = 0;
     this.pickupSeq = 0;
   }
@@ -99,7 +98,7 @@ export class Deathmatch {
   update(dt, { boardHeld }) {
     if (!this.active) return;
     this._updateTimers(dt);
-    this._updateRegen(dt);
+    this.regen.update(this.player, dt);
     this._updatePickupSpawner(dt);
     this.sendTimer -= dt;
     if (this.sendTimer <= 0) {
@@ -165,17 +164,7 @@ export class Deathmatch {
   }
 
   _sendState() {
-    const { player, weapons } = this;
-    this._send({
-      t: 's',
-      x: round2(player.pos.x), y: round2(player.pos.y), z: round2(player.pos.z),
-      yw: round2(player.yaw), pt: round2(player.pitch),
-      vx: round2(player.vel.x), vz: round2(player.vel.z),
-      g: player.grounded ? 1 : 0, sl: player.sliding ? 1 : 0, sp: player.sprinting ? 1 : 0,
-      cr: player.crouching ? 1 : 0, ln: round2(player.lean),
-      w: weapons.index, a: round2(weapons.adsBlend), f: weapons.beamOn ? 1 : 0, r: weapons.reloading ? 1 : 0,
-      al: player.alive ? 1 : 0, hp: Math.round(player.health),
-    });
+    this._send(poseMessage(this.player, this.weapons));
   }
 
   _updateTimers(dt) {
@@ -192,17 +181,6 @@ export class Deathmatch {
       this.restartTimer -= dt;
       if (this.restartTimer <= 0) this._newMatch();
     }
-  }
-
-  /** Health comes back by itself once you have been left alone for regenDelay seconds. */
-  _updateRegen(dt) {
-    const { player } = this;
-    if (!player.alive) return;
-    this.sinceDamage = player.health < this.lastHealth ? 0 : this.sinceDamage + dt;
-    if (this.sinceDamage >= this.config.regenDelay && player.health < player.cfg.maxHealth) {
-      player.heal(this.config.regenRate * dt);
-    }
-    this.lastHealth = player.health;
   }
 
   /** The lowest-id player acts as the spawner, so each crate is created once. */
@@ -240,20 +218,8 @@ export class Deathmatch {
   }
 
   _updateBoard(dt, visible) {
-    if (visible !== this.scoreboard.visible) {
-      this.scoreboard.setVisible(visible);
-      this.scoreboard.setMiniVisible(!visible); // the full table replaces the corner top three
-      this.boardTimer = 0;
-    }
-    this.boardTimer -= dt;
-    if (this.boardTimer > 0) return;
-    this.boardTimer = BOARD_REFRESH;
-    if (!visible) {
-      this.scoreboard.renderMini(this._rows());
-      return;
-    }
     const winner = this.over ? this.names.get(this.winnerId) : null;
-    this.scoreboard.render(this._rows(), this.net.latency, winner ? `${winner} WINS` : 'SCOREBOARD');
+    this.scoreboard.refresh(dt, visible, this._rows(), this.net.latency, winner ? `${winner} WINS` : 'SCOREBOARD');
   }
 
   _rows() {
@@ -281,8 +247,7 @@ export class Deathmatch {
     this.protectTimer = this.config.spawnProtect;
     this.lastAttacker = 0;
     this.respawnTimer = 0;
-    this.sinceDamage = 0;
-    this.lastHealth = player.health;
+    this.regen.reset(player.health);
     this.scoreboard.setRespawn(null);
     this._sendState();
   }

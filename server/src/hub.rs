@@ -9,6 +9,10 @@
 //!   {"t":"pong","n":N}                              reply to a client ping
 //!   {"from":N,"m":{..}}                             a relayed game message
 //! Client -> server messages: {"t":"join","name":".."}, {"t":"ping","n":N}, anything else is relayed.
+//!
+//! DIG SITE (messages starting with `dg_`) is a separate game with its own lobby, run by
+//! `crate::dig::lobby`. The hub only feeds it messages, delivers what it returns, and
+//! relays pose messages between the players of a running dig match.
 
 use std::collections::HashMap;
 use std::io;
@@ -17,12 +21,16 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::dig::lobby::{Delivery, DigGames, MATCH_SECONDS};
+use crate::json::Json;
 use crate::websocket::{accept_key, encode_frame, read_frame, OP_CLOSE, OP_PING, OP_PONG, OP_TEXT};
 
 pub const MAX_PLAYERS: usize = 8;
 pub const MAX_NAME_LEN: usize = 16;
+/// The name a solo player gets when they send none (or an invalid one).
+const SOLO_NAME: &str = "Solo";
 
 /// Messages queued per client. A client that falls this far behind loses messages
 /// (state updates are replaced by newer ones anyway).
@@ -37,15 +45,20 @@ struct Client {
 }
 
 pub struct Hub {
+    // Lock order: `clients` first, then `dig`.
     clients: Mutex<HashMap<u32, Client>>,
+    dig: Mutex<DigGames>,
     next_id: AtomicU32,
+    started: Instant,
 }
 
 impl Hub {
     pub fn new() -> Self {
         Hub {
             clients: Mutex::new(HashMap::new()),
+            dig: Mutex::new(DigGames::new(match_seconds())),
             next_id: AtomicU32::new(1),
+            started: Instant::now(),
         }
     }
 
@@ -66,11 +79,35 @@ impl Hub {
         if was_joined {
             broadcast_all(&clients, &roster_json(&clients));
         }
+        let mut dig = self.dig.lock().unwrap();
+        let deliveries = dig.leave(id);
+        deliver(&clients, deliveries);
+    }
+
+    /// Seconds since the hub started: the clock the dig game uses for cooldowns and the match timer.
+    fn now(&self) -> f64 {
+        self.started.elapsed().as_secs_f64()
+    }
+
+    /// Called about 20 times a second: resolves queued digs and ends matches on time.
+    pub fn tick(&self) {
+        let clients = self.clients.lock().unwrap();
+        let mut dig = self.dig.lock().unwrap();
+        let deliveries = dig.tick(self.now());
+        deliver(&clients, deliveries);
     }
 
     fn handle_text(&self, id: u32, text: &str) {
         let mut clients = self.clients.lock().unwrap();
-        match json_string_field(text, "t").as_deref() {
+        let kind = json_string_field(text, "t");
+        if kind.as_deref().is_some_and(|name| name.starts_with("dg_")) {
+            self.handle_dig(&clients, id, text);
+            return;
+        }
+        if self.relay_in_dig(&clients, id, kind.as_deref(), text) {
+            return;
+        }
+        match kind.as_deref() {
             Some("join") => join(&mut clients, id, json_string_field(text, "name")),
             Some("ping") => {
                 let number = json_number_field(text, "n").unwrap_or_default();
@@ -79,6 +116,115 @@ impl Hub {
             _ => relay(&clients, id, text),
         }
     }
+}
+
+impl Hub {
+    /// A `dg_*` message: lobby actions and dig requests for the DIG SITE game.
+    fn handle_dig(&self, clients: &HashMap<u32, Client>, id: u32, text: &str) {
+        let Some(message) = Json::parse(text) else {
+            return;
+        };
+        let name = message
+            .get("name")
+            .and_then(Json::as_str)
+            .unwrap_or_default()
+            .trim();
+        let mut dig = self.dig.lock().unwrap();
+        let deliveries = match message.get("t").and_then(Json::as_str) {
+            Some("dg_join") if is_valid_name(name) => dig.join(id, name),
+            Some("dg_join") => vec![Delivery {
+                to: id,
+                message: Json::obj([
+                    ("t", Json::str("dg_error")),
+                    ("code", Json::str("bad-name")),
+                ]),
+            }],
+            // Solo play: a private one-player game that starts at once. A bad or missing name falls back to "Solo".
+            Some("dg_solo") => {
+                let solo_name = if is_valid_name(name) { name } else { SOLO_NAME };
+                dig.start_solo(id, solo_name, fresh_seed(id), self.now())
+            }
+            Some("dg_leave") => dig.leave(id),
+            Some("dg_start") => dig.start(id, fresh_seed(id), self.now()),
+            Some("dg_again") => dig.return_to_lobby(id),
+            Some("dg_dig") => {
+                let coordinate = |key| message.get(key).and_then(Json::as_i32);
+                if let (Some(x), Some(z)) = (coordinate("x"), coordinate("z")) {
+                    dig.dig(id, (x, z));
+                }
+                Vec::new()
+            }
+            _ => Vec::new(),
+        };
+        deliver(clients, deliveries);
+    }
+
+    /// Pose, tracer and swing messages from a player in a DIG SITE game: the server notes where
+    /// they stand (for the dig reach check) and passes the message to the other players of a
+    /// shared match. Returns true when the message was handled here.
+    fn relay_in_dig(
+        &self,
+        clients: &HashMap<u32, Client>,
+        from: u32,
+        kind: Option<&str>,
+        text: &str,
+    ) -> bool {
+        if !matches!(kind, Some("s" | "sh" | "ml")) {
+            return false;
+        }
+        let mut dig = self.dig.lock().unwrap();
+        if !dig.is_member(from) {
+            return false;
+        }
+        if kind == Some("s") {
+            if let Some(message) = Json::parse(text) {
+                let coordinate = |key| message.get(key).and_then(Json::as_f64);
+                if let (Some(x), Some(z)) = (coordinate("x"), coordinate("z")) {
+                    dig.position(from, x, z);
+                }
+            }
+        }
+        let trimmed = text.trim();
+        if trimmed.starts_with('{') && trimmed.ends_with('}') {
+            let frame = encode_frame(
+                OP_TEXT,
+                format!("{{\"from\":{from},\"m\":{trimmed}}}").as_bytes(),
+            );
+            for member in dig.relay_targets(from) {
+                if let Some(client) = clients.get(&member) {
+                    let _ = client.outbox.try_send(frame.clone());
+                }
+            }
+        }
+        true
+    }
+}
+
+/// Send the messages a dig call produced.
+fn deliver(clients: &HashMap<u32, Client>, deliveries: Vec<Delivery>) {
+    for delivery in deliveries {
+        if let Some(client) = clients.get(&delivery.to) {
+            let frame = encode_frame(OP_TEXT, delivery.message.to_string().as_bytes());
+            let _ = client.outbox.try_send(frame);
+        }
+    }
+}
+
+/// Match length: DIG_MATCH_SECONDS if set (for testing), otherwise the normal length.
+fn match_seconds() -> f64 {
+    std::env::var("DIG_MATCH_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|seconds| *seconds > 0.0)
+        .unwrap_or(MATCH_SECONDS)
+}
+
+/// A map seed that differs every match. It is not secret from the server; clients never see it.
+fn fresh_seed(id: u32) -> u64 {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos() as u64);
+    nanos ^ (u64::from(id) << 32)
 }
 
 /// Register a username for a connection, or tell it why not.

@@ -4,7 +4,10 @@
 //! from the PORT env var (default 8123); if it is busy, the next ports are tried.
 //! The same port also hosts the multiplayer relay on the WebSocket path `/ws`.
 
+mod dig;
 mod hub;
+mod json;
+mod rng;
 mod websocket;
 
 use std::env;
@@ -22,6 +25,8 @@ const DEFAULT_PORT: u16 = 8123;
 const PORT_ATTEMPTS: u16 = 20;
 const MAX_REQUEST_BYTES: usize = 8 * 1024;
 const WEBSOCKET_PATH: &str = "/ws";
+/// How often queued digs are resolved and match clocks are checked.
+const TICK_INTERVAL: Duration = Duration::from_millis(50);
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Only these file types are ever served; everything else is a 404.
@@ -60,6 +65,11 @@ fn main() {
     }
 
     let hub = Arc::new(Hub::new());
+    let ticker = Arc::clone(&hub);
+    thread::spawn(move || loop {
+        thread::sleep(TICK_INTERVAL);
+        ticker.tick();
+    });
     for stream in listener.incoming().flatten() {
         let root = root.clone();
         let hub = Arc::clone(&hub);

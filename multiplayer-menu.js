@@ -14,7 +14,7 @@ const STATUS_TEXT = {
   [NET_STATUS.CLOSED]: 'CONNECTION LOST. GO BACK AND TRY AGAIN.',
 };
 
-function loadName() {
+export function loadName() {
   try {
     return localStorage.getItem(STORAGE_KEY);
   } catch {
@@ -22,7 +22,7 @@ function loadName() {
   }
 }
 
-function saveName(name) {
+export function saveName(name) {
   try {
     localStorage.setItem(STORAGE_KEY, name);
   } catch {

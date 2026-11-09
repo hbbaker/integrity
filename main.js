@@ -16,6 +16,12 @@ import { Targets } from './targets.js';
 import { Deathmatch } from './deathmatch.js';
 import { MultiplayerMenu } from './multiplayer-menu.js';
 import { Scoreboard } from './scoreboard.js';
+import { DigMode } from './dig-mode.js';
+import { DigHud } from './dig-hud.js';
+import { DigLobbyScreen } from './dig-lobby.js';
+import { BotMatch } from './bot-match.js';
+import { SoloMenu } from './solo-menu.js';
+import { loadName } from './multiplayer-menu.js';
 
 /* ========================================================================== *
  *  CONFIG: every tuning value lives here. Distances are metres, times are
@@ -44,6 +50,7 @@ const CONFIG = {
     leanSpeed: 12, // how fast the lean moves in and out
     leanClearance: 0.18, // how much room the eye needs, so a lean stops at walls
     stepHeight: 0.35, // ledges/ramps lower than this are walked up without jumping
+    climbSpeed: 2.5, // m/s up the wall of a dug hole (DIG SITE) while you push against it
     snapDown: 0.2, // how far we stay glued to a downward ramp
 
     walkSpeed: 6.5,
@@ -161,6 +168,8 @@ const CONFIG = {
         flashSize: 0.5, worldLight: 40, heat: 16, tracerColor: 0xbfe8ff,
         ads: { x: 0, y: -0.09, z: -0.25, fovDrop: 52 },
       },
+      // The shovel is the DIG SITE tool. Hidden: it is not in the inventory and never in a loadout slot.
+      { id: 'shovel', name: 'SHOVEL', melee: true, hidden: true, damage: 0, interval: 0.6, range: 0, cone: 0, knockback: 0, stun: 0 },
     ],
   },
 
@@ -220,6 +229,32 @@ const CONFIG = {
     speedGrowth: 0.06, // bots get this much faster each wave
     maxSpeedMul: 1.7,
     intermission: 3.5,
+  },
+
+  // DIG SITE (see dig-mode.js). Rules numbers live on the server; the cooldown here only paces the swing.
+  dig: {
+    half: 24, // the site is 48 x 48 tiles of 1 m
+    wallHeight: 2.5,
+    reach: 3, // metres from you to the tile your crosshair can dig
+    swingTime: 0.4, // seconds you stand still while the shovel swings
+    cooldownBase: 0.6, // keep in step with server/src/dig/rules.rs
+    cooldownPerLayer: 0.12,
+    layerInches: 6,
+    maxDepthInches: 132,
+    sendHz: 20,
+  },
+
+  // DEATHMATCH VS BOTS (see bot-match.js): the deathmatch rules, played alone against the cable bots
+  botMatch: {
+    botCount: 6, // bots kept alive at once (enemies.maxAlive is the hard cap)
+    spawnInterval: 1.5, // seconds between topping the bots back up
+    speedMul: 1.1,
+    respawnTime: 3,
+    spawnProtect: 2,
+    killLimit: 20, // first to this many kills wins; the bots' kills are your deaths
+    matchRestartDelay: 8,
+    regenDelay: 5,
+    regenRate: 8,
   },
 
   // LAN deathmatch (see deathmatch.js)
@@ -293,10 +328,17 @@ const scoreboard = new Scoreboard();
 const net = new NetClient({
   onStatus: (status) => {
     mpMenu.setStatus(status);
-    if (status === NET_STATUS.CLOSED && game.mode === 'deathmatch') toMenu();
+    digLobby.setStatus(status);
+    if (status === NET_STATUS.ONLINE && pendingSolo) startSoloDigNow();
+    if (status === NET_STATUS.CLOSED && pendingSolo) {
+      pendingSolo = false;
+      soloMenu.setStatus('COULD NOT REACH THE SERVER');
+    }
+    if (status === NET_STATUS.CLOSED && (game.mode === 'deathmatch' || game.mode === 'dig')) toMenu();
   },
   onRoster: (players) => onNetRoster(players),
   onJoinError: (code) => mpMenu.showError(code),
+  onDig: (message) => onDigMessage(message),
   onMessage: (from, message) => {
     remotes.receive(from, message, performance.now() * 0.001);
     deathmatch.onMessage(from, message);
@@ -316,6 +358,40 @@ const mpMenu = new MultiplayerMenu({
     hud.showStart(true, false);
   },
 });
+const botMatch = new BotMatch({
+  config: CONFIG.botMatch, arenaHalf: CONFIG.arena.half, player, weapons, cyborg, enemies, world, scoreboard, hud,
+});
+const soloMenu = new SoloMenu({
+  onSandbox: () => {
+    soloMenu.close();
+    startMode('sandbox');
+  },
+  onDig: () => startSoloDig(),
+  onBots: () => {
+    soloMenu.close();
+    startMode('botmatch');
+  },
+  onBack: () => {
+    pendingSolo = false;
+    soloMenu.close();
+    hud.showStart(true, false);
+  },
+});
+const digHud = new DigHud();
+const dig = new DigMode({
+  config: CONFIG.dig, net, player, weapons, remotes, world, scene, camera, audio, hud, digHud, scoreboard,
+});
+const digLobby = new DigLobbyScreen({
+  onJoin: (name) => net.sendDig({ t: 'dg_join', name }),
+  onStart: () => net.sendDig({ t: 'dg_start' }),
+  onBack: () => {
+    net.sendDig({ t: 'dg_leave' });
+    net.close();
+    digLobby.reset();
+    digLobby.close();
+    hud.showStart(true, false);
+  },
+});
 const inventory = new Inventory({
   weapons,
   onResume: () => {
@@ -325,7 +401,7 @@ const inventory = new Inventory({
   },
 });
 
-const game = { kills: 0, time: 0, mode: null }; // mode: null (menu) | 'waves' | 'sandbox' | 'deathmatch'
+const game = { kills: 0, time: 0, mode: null }; // mode: null (menu) | 'waves' | 'sandbox' | 'deathmatch' | 'botmatch' | 'dig'
 
 player.onDamage = () => {
   hud.damage();
@@ -340,12 +416,18 @@ player.onDeath = () => {
     deathmatch.onLocalDeath();
     return;
   }
+  if (game.mode === 'botmatch') {
+    audio.deathDialup();
+    botMatch.onPlayerDeath();
+    return;
+  }
   hud.showDeath(director.wave, game.kills);
   audio.deathDialup();
   document.exitPointerLock();
 };
 
 enemies.onKill = (e) => {
+  if (game.mode === 'botmatch') botMatch.onBotKilled();
   game.kills += 1;
   hud.setKills(game.kills);
   pickups.maybeDrop(e.pos.x, e.pos.y, e.pos.z, player.health < CONFIG.player.maxHealth * 0.5);
@@ -425,12 +507,67 @@ const director = {
 /** The server roster changed: update the lobby list, avatars and match tables; start the match once joined. */
 function onNetRoster(players) {
   mpMenu.setRoster(players, net.id);
+  if (game.mode === 'dig') return; // the deathmatch roster is not this game's: dig keeps its own player list
   remotes.sync(players, net.id);
   if (game.mode === 'deathmatch') deathmatch.onRoster(players);
   if (mpMenu.isOpen && net.joined) {
     mpMenu.close();
     startMode('deathmatch');
   }
+}
+
+/** The server's DIG SITE messages: lobby updates, errors, the map (match start), and match events. */
+function onDigMessage(message) {
+  switch (message.t) {
+    case 'dg_lobby':
+      digLobby.setLobby(message, net.id);
+      if (game.mode === 'dig') {
+        dig.onLobby(message);
+        if (message.phase === 'lobby') backToDigLobby(); // someone pressed BACK TO LOBBY: everyone follows
+      }
+      break;
+    case 'dg_error':
+      digLobby.showError(message.code);
+      break;
+    case 'dg_map':
+      soloMenu.close();
+      startMode('dig', message);
+      break;
+    default:
+      dig.onMessage(message);
+      break;
+  }
+}
+
+/** SANDBOX menu -> DIG SITE: connect, then ask the server for a private one-player match. */
+function startSoloDig() {
+  pendingSolo = true;
+  soloMenu.setStatus('CONNECTING...');
+  net.connect();
+  if (net.status === NET_STATUS.ONLINE) startSoloDigNow();
+}
+
+function startSoloDigNow() {
+  pendingSolo = false;
+  net.sendDig({ t: 'dg_solo', name: loadName() ?? '' }); // the server falls back to "Solo" for a bad name
+}
+
+function openDig() {
+  hud.showStart(false);
+  digLobby.open();
+  net.connect();
+  digLobby.setStatus(net.status); // already connected: no status change will come
+}
+
+/** Leave the match screen for the lobby screen, staying connected. */
+function backToDigLobby() {
+  dig.stop();
+  game.mode = null;
+  remotes.clear();
+  hud.clearNumbers();
+  document.exitPointerLock();
+  hud.showStart(false);
+  digLobby.open();
 }
 
 function openMultiplayer() {
@@ -466,6 +603,7 @@ const input = {
 };
 
 let locked = false;
+let pendingSolo = false; // waiting for the connection so a solo DIG SITE game can be requested
 
 const RELOCK_RETRY_MS = 1300; // browsers refuse a new lock for about a second after the old one was released
 
@@ -480,7 +618,9 @@ function requestLock(retry = true) {
 
 /** True when a game is running and the mouse was released by accident (Esc, alt-tab, a click outside). */
 function canResume() {
-  return game.mode !== null && !inventory.isOpen && (player.alive || game.mode === 'deathmatch');
+  if (game.mode === 'dig') return !inventory.isOpen && !dig.ended; // nothing to resume once the results show
+  const respawns = game.mode === 'deathmatch' || game.mode === 'botmatch'; // these revive you, so a dead player may still resume
+  return game.mode !== null && !inventory.isOpen && (player.alive || respawns);
 }
 
 document.addEventListener('keydown', (e) => {
@@ -500,7 +640,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
-  if (e.code === 'KeyI' && player.alive && game.mode !== null && !e.repeat) {
+  if (e.code === 'KeyI' && player.alive && game.mode !== null && game.mode !== 'dig' && !e.repeat) {
     inventory.open();
     hud.showStart(false);
     document.exitPointerLock(); // the game pauses while the pointer is free
@@ -596,9 +736,20 @@ document.addEventListener('pointerlockchange', () => {
 
 document.addEventListener('pointerlockerror', () => hud.showStart(player.alive, game.mode !== null));
 
-hud.el.modeSandbox.addEventListener('click', (e) => { e.stopPropagation(); startMode('sandbox'); });
+hud.el.modeSandbox.addEventListener('click', (e) => {
+  e.stopPropagation();
+  hud.showStart(false);
+  soloMenu.open();
+});
 hud.el.modeWaves.addEventListener('click', (e) => { e.stopPropagation(); startMode('waves'); });
 hud.el.modeMultiplayer.addEventListener('click', (e) => { e.stopPropagation(); audio.unlock(); openMultiplayer(); });
+hud.el.modeDig.addEventListener('click', (e) => { e.stopPropagation(); audio.unlock(); openDig(); });
+digHud.el.again.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (dig.solo) startSoloDigNow(); // a solo player starts a fresh game instead of returning to a lobby
+  else net.sendDig({ t: 'dg_again' });
+});
+digHud.el.menu.addEventListener('click', (e) => { e.stopPropagation(); toMenu(); });
 hud.el.resume.addEventListener('click', (e) => { e.stopPropagation(); audio.unlock(); requestLock(); });
 hud.el.toMenu.addEventListener('click', (e) => { e.stopPropagation(); toMenu(); });
 hud.el.deadMenu.addEventListener('click', (e) => { e.stopPropagation(); toMenu(); });
@@ -610,13 +761,22 @@ hud.el.dead.addEventListener('click', () => {
 
 /** Back to the mode-select screen (the scene keeps rendering behind it). */
 function toMenu() {
-  const wasOnline = game.mode === 'deathmatch';
+  const wasDeathmatch = game.mode === 'deathmatch';
+  const wasDig = game.mode === 'dig';
+  if (game.mode === 'botmatch') botMatch.stop();
   game.mode = null; // first: closing the connection reports "closed", which must not re-enter here
-  if (wasOnline) {
+  if (wasDeathmatch) {
     deathmatch.stop();
     net.close();
     remotes.clear();
     hud.setKills(0);
+  }
+  if (wasDig) {
+    dig.stop();
+    net.sendDig({ t: 'dg_leave' });
+    net.close();
+    remotes.clear();
+    digLobby.reset();
   }
   enemies.clear();
   pickups.clear();
@@ -628,10 +788,10 @@ function toMenu() {
 }
 
 /** Start (or restart) a mode: rebuild the level, reset everything, lock the pointer. */
-function startMode(mode) {
+function startMode(mode, payload = null) {
   const sandbox = mode === 'sandbox';
   game.mode = mode;
-  world.build(sandbox ? 'sandbox' : 'waves'); // deathmatch plays in the wave arena
+  world.build(sandbox ? 'sandbox' : mode === 'dig' ? 'dig' : 'waves'); // deathmatch plays in the wave arena
   renderer.shadowMap.needsUpdate = true; // shadows are static: re-render them for the new level
   scene.fog.far = sandbox ? 230 : 130;
   scene.fog.near = sandbox ? 70 : 45;
@@ -652,7 +812,16 @@ function startMode(mode) {
   game.kills = 0;
   hud.setKills(0);
   if (mode === 'waves') director.reset();
+  if (mode === 'botmatch') botMatch.start();
   if (mode === 'deathmatch') deathmatch.start();
+  if (mode === 'dig') {
+    digLobby.close();
+    dig.solo = !!payload.solo;
+    digHud.setSolo(dig.solo);
+    dig.start(payload);
+    cyborg.reset(); // after dig.start: the player now stands on the site's spawn tile
+    renderer.shadowMap.needsUpdate = true; // the houses and poles are new static shadow casters
+  }
   accumulator = 0;
   audio.unlock();
   requestLock();
@@ -673,11 +842,16 @@ let accumulator = 0;
 let lastTime = performance.now();
 
 function fixedUpdate(dt) {
-  player.update(dt, input);
-  weapons.update(dt, input);
+  const digging = game.mode === 'dig';
+  if (digging) dig.fixedUpdate(input);
+  const stepInput = digging ? dig.filterInput(input) : input; // digging: stand still mid-swing, no weapon keys
+  if (player.alive) { // in a bot match the world runs on while you wait to respawn, but the dead do nothing
+    player.update(dt, stepInput);
+    weapons.update(dt, stepInput);
+  }
   enemies.update(dt);
   if (game.mode === 'waves') director.update(dt);
-  pickups.update(dt, player.pos);
+  if (player.alive) pickups.update(dt, player.pos);
   input.clearEdges();
 }
 
@@ -705,8 +879,10 @@ function frame(now) {
   lastTime = now;
   game.time += dt;
 
-  const online = game.mode === 'deathmatch'; // the match runs on even when the pointer is released
-  const playing = (locked || online) && player.alive && game.mode !== null;
+  const online = game.mode === 'deathmatch' || game.mode === 'dig'; // these matches run on even when the pointer is released
+  const resultsShowing = game.mode === 'dig' && dig.ended;
+  const respawning = game.mode === 'botmatch'; // the world keeps running while you are dead and waiting to respawn
+  const playing = (locked || online) && (player.alive || respawning) && game.mode !== null && !resultsShowing;
   if (!playing) weapons.cease(); // never leave a beam (or its hum) running while paused
   if (!player.alive) input.clearAll(); // dead: forget held keys and latched presses, so respawning starts clean
   let alpha = 1;
@@ -721,11 +897,11 @@ function frame(now) {
     if (steps === CONFIG.maxStepsPerFrame) accumulator = 0; // way behind: drop the backlog
     alpha = accumulator / CONFIG.fixedStep;
   }
-  if (online) {
-    deathmatch.update(dt, { boardHeld: input.boardHeld });
-    // The match keeps running when the mouse is released: always show how to get it back.
-    if (!locked && canResume() && hud.el.start.style.display === 'none') hud.showStart(true, true);
-  }
+  if (game.mode === 'deathmatch') deathmatch.update(dt, { boardHeld: input.boardHeld });
+  if (game.mode === 'dig') dig.update(dt);
+  if (game.mode === 'botmatch' && playing) botMatch.update(dt, { boardHeld: input.boardHeld });
+  // The match keeps running when the mouse is released: always show how to get it back.
+  if (online && !locked && canResume() && hud.el.start.style.display === 'none') hud.showStart(true, true);
   renderFrame(alpha, dt);
 }
 

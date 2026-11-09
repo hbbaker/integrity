@@ -206,6 +206,22 @@ function buildSniper() {
   };
 }
 
+function buildShovel() {
+  const root = new THREE.Group();
+  const shaft = at(barrelPart(0.017, 1.0, MAT.wood), 0, 0, -0.25);
+  const handle = at(box(0.2, 0.03, 0.03, MAT.wood), 0, 0, 0.26); // D-grip across the top
+  const blade = at(box(0.17, 0.012, 0.24, MAT.steel), 0, -0.01, -0.84); // steel blade, tilted down
+  blade.rotation.x = 0.35;
+  const collar = at(box(0.045, 0.045, 0.1, MAT.steel), 0, 0, -0.74); // socket where the blade meets the shaft
+  const leftArm = at(makeArm(-1, Math.PI, [-0.3, -0.35, 1]), 0, -0.03, -0.18); // palm up under the shaft
+  const rightArm = at(makeArm(1, -Math.PI / 2, [0.3, -0.45, 1]), 0.04, -0.03, 0.2);
+  root.add(shaft, handle, collar, blade, rightArm, leftArm);
+  return {
+    root, muzzle: null, home: { x: 0.2, y: -0.22, z: -0.4 },
+    parts: { support: { object: leftArm, baseY: leftArm.position.y } },
+  };
+}
+
 function buildFists() {
   const root = new THREE.Group();
   const hands = [];
@@ -229,6 +245,7 @@ function buildFists() {
 const MODEL_BUILDERS = {
   fists: buildFists, pistol: buildPistol, shotgun: buildShotgun, smg: buildSmg,
   sniper: buildSniper,
+  shovel: buildShovel,
   raygun: () => buildRaygun(makeArm),
 };
 
@@ -290,6 +307,7 @@ export class Weapons {
     // Multiplayer hooks, set by main.js (null in single player):
     this.onShot = null; // (weaponIndex, fromVector, endPointsArray) after each trigger pull of a hitscan gun
     this.onMelee = null; // (usesFists) after each melee swing
+    this.fireLocked = false; // a mode that uses the trigger for something else (digging) sets this
     this._shotEnds = []; // end points of this trigger pull's rays, reused
     this._createBeam(mainScene);
 
@@ -550,7 +568,7 @@ export class Weapons {
 
     if (!this.switching) {
       if (input.reloadPressed) this.startReload();
-      if (input.meleePressed) this.quickMelee();
+      if (input.meleePressed && !this.fireLocked) this.quickMelee();
       this._updateReload(dt);
 
       const c = this.current.cfg;
@@ -559,7 +577,7 @@ export class Weapons {
         this._pushHud();
         return;
       }
-      const wantsFire = c.auto ? (input.fireHeld || this.triggerBuffer > 0) : this.triggerBuffer > 0;
+      const wantsFire = !this.fireLocked && (c.auto ? (input.fireHeld || this.triggerBuffer > 0) : this.triggerBuffer > 0);
       if (wantsFire && this.cooldown <= 0) {
         if (this.player.sprinting) {
           // Cannot fire while sprinting: the attempt drops the sprint, and the shot comes a beat later.
@@ -618,9 +636,9 @@ export class Weapons {
     return { index, id: c.id, name: s.base.name, dps, range: c.range, capacity, slot: this.loadout.indexOf(index) };
   }
 
-  /** Every weapon that can go in a loadout slot (everything except fists). */
+  /** Every weapon that can go in a loadout slot (everything except fists and hidden tools like the shovel). */
   armory() {
-    return this.slots.map((_, i) => i).filter((i) => i !== FISTS).map((i) => this.describe(i));
+    return this.slots.map((_, i) => i).filter((i) => i !== FISTS && !this.slots[i].cfg.hidden).map((i) => this.describe(i));
   }
 
   _pushLoadout() {
@@ -1114,6 +1132,11 @@ export class Weapons {
     this.audio.punch(true);
     if (killed) this.audio.enemyKill();
     else this.audio.hitBeep(false);
+  }
+
+  /** Play the tool swing animation (and tell other players) without hitting anything. */
+  swingTool() {
+    this._startMeleeAnim(false);
   }
 
   _startMeleeAnim(usesFists) {

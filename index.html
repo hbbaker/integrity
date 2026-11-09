@@ -96,14 +96,14 @@
   #overlay-multiplayer h2 { animation: none; }
   .mp-card { width: min(560px, 92vw); padding: 18px 28px 22px; display: flex; flex-direction: column; gap: 10px; text-align: left; font-size: 18px; }
   .mp-card label { font-size: 20px; }
-  #mp-name { font: inherit; font-size: 34px; font-style: italic; text-transform: none; padding: 4px 12px; border: 4px solid var(--ink); background: #fff; color: var(--ink); user-select: text; outline: none; }
-  #mp-name:focus { border-color: var(--red); }
-  #mp-status { font-size: 16px; min-height: 22px; }
-  #mp-error { color: var(--red); font-size: 20px; min-height: 26px; }
-  #mp-players { margin: 0; padding: 0; list-style: none; font-size: 20px; min-height: 28px; }
-  #mp-players li { padding: 1px 0; }
-  #mp-players li.me { color: var(--red); }
-  #mp-join[disabled] { opacity: .45; cursor: not-allowed; filter: grayscale(.6); }
+  #mp-name, #dig-name { font: inherit; font-size: 34px; font-style: italic; text-transform: none; padding: 4px 12px; border: 4px solid var(--ink); background: #fff; color: var(--ink); user-select: text; outline: none; }
+  #mp-name:focus, #dig-name:focus { border-color: var(--red); }
+  #mp-status, #dig-status { font-size: 16px; min-height: 22px; }
+  #mp-error, #dig-error { color: var(--red); font-size: 20px; min-height: 26px; }
+  #mp-players, #dig-players { margin: 0; padding: 0; list-style: none; font-size: 20px; min-height: 28px; }
+  #mp-players li, #dig-players li { padding: 1px 0; }
+  #mp-players li.me, #dig-players li.me { color: var(--red); }
+  #mp-join[disabled], #dig-join[disabled], #dig-start[disabled] { opacity: .45; cursor: not-allowed; filter: grayscale(.6); }
   #scoreboard { display: none; position: absolute; left: 50%; top: 18%; translate: -50% 0; min-width: min(560px, 90vw); padding: 14px 22px 18px; }
   #scoreboard h3 { margin: 0 0 8px; font-size: 26px; display: flex; justify-content: space-between; }
   #scoreboard table { width: 100%; border-collapse: collapse; font-size: 22px; }
@@ -120,6 +120,33 @@
   @keyframes feed-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
   #respawn { display: none; position: absolute; left: 50%; top: 40%; translate: -50% 0; font-size: 54px; color: var(--red); -webkit-text-stroke: 11px var(--ink); paint-order: stroke fill; text-align: center; white-space: nowrap; }
   #ping { display: none; position: absolute; left: 50%; bottom: 8px; translate: -50% 0; font-size: 14px; color: #fff; -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; }
+
+  /* ---------- DIG SITE ---------- */
+  #overlay-dig, #overlay-dig-results, #overlay-solo { display: none; cursor: default; }
+  #overlay-solo h2 { animation: none; font-size: 30px; }
+  #solo-status { min-height: 26px; font-size: 20px; -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; }
+  #overlay-dig h2, #overlay-dig-results h2 { animation: none; font-size: 30px; }
+  #dig-players li.host::after { content: ' \2605 HOST'; color: var(--orange); font-size: 14px; }
+  #dig-hud { display: none; }
+  body.dig-mode #dig-hud { display: block; }
+  body.dig-mode #health-panel, body.dig-mode #weapon-panel, body.dig-mode #slot-bar, body.dig-mode #top-bar { display: none; }
+  #dig-timer { position: absolute; top: 16px; left: 50%; translate: -50% 0; padding: 2px 26px; font-size: 40px; background: var(--dots), linear-gradient(#ffe84d, var(--yellow)); }
+  #dig-timer.low { background: var(--dots), linear-gradient(#ff7a7f, var(--red)); color: #fff; }
+  #dig-board { position: absolute; left: 24px; top: 20px; padding: 6px 16px 8px; font-size: 20px; min-width: 210px; }
+  #dig-board div { display: flex; justify-content: space-between; gap: 18px; }
+  #dig-board .me { color: var(--red); }
+  #dig-board small { font-size: 12px; opacity: .7; }
+  #dig-depth { position: absolute; left: 50%; bottom: 30px; translate: -50% 0; padding: 6px 28px 8px; text-align: center; min-width: 250px; }
+  #dig-depth .label { font-size: 14px; opacity: .7; }
+  #dig-depth-value { font-size: 40px; line-height: 1; }
+  #dig-depth-next { font-size: 15px; min-height: 18px; }
+  #dig-hint { position: absolute; left: 50%; top: 56%; translate: -50% 0; font-size: 22px; color: #fff; -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; white-space: nowrap; }
+  #dig-results-table { width: 100%; border-collapse: collapse; font-size: 22px; }
+  #dig-results-table th { font-size: 14px; opacity: .7; text-align: right; }
+  #dig-results-table td { text-align: right; padding: 3px 0; border-top: 2px solid rgba(0, 0, 0, .25); }
+  #dig-results-table th:nth-child(2), #dig-results-table td:nth-child(2), #dig-results-table th:first-child, #dig-results-table td:first-child { text-align: left; }
+  #dig-results-table tr.me td { color: var(--red); }
+  #dig-results-table tr.left td { opacity: .55; }
 
   /* ---------- sniper scope ---------- */
   #scope { position: absolute; inset: 0; opacity: 0; pointer-events: none;
@@ -205,6 +232,16 @@
   <div id="banner"></div>
 
   <div id="mini-board"></div>
+  <div id="dig-hud">
+    <div id="dig-timer" class="panel">8:00</div>
+    <div id="dig-board" class="panel"></div>
+    <div id="dig-depth" class="panel">
+      <div class="label">DEPTH</div>
+      <div id="dig-depth-value">0 IN</div>
+      <div id="dig-depth-next"></div>
+    </div>
+    <div id="dig-hint"></div>
+  </div>
   <div id="kill-feed"></div>
   <div id="respawn"></div>
   <div id="ping"></div>
@@ -236,9 +273,10 @@
   <h1>CABLE BOTS</h1>
   <h2 id="start-sub">CHOOSE A MODE</h2>
   <div id="mode-buttons" class="btn-row">
-    <button id="mode-sandbox" class="panel menu-btn">SANDBOX<small>OPEN WORLD · NO ENEMIES</small></button>
+    <button id="mode-sandbox" class="panel menu-btn">SANDBOX<small>SOLO MODES · PICK ONE</small></button>
     <button id="mode-waves" class="panel menu-btn">WAVE GAME<small>SURVIVE THE BOTS</small></button>
     <button id="mode-multiplayer" class="panel menu-btn">MULTIPLAYER<small>DEATHMATCH ON YOUR NETWORK</small></button>
+    <button id="mode-dig" class="panel menu-btn">DIG SITE<small>FIND THE UTILITIES · DIG · DON'T STRIKE</small></button>
   </div>
   <div id="pause-buttons" class="btn-row" style="display:none">
     <button id="start-resume" class="panel menu-btn">RESUME</button>
@@ -247,7 +285,7 @@
   <div class="panel keys">
     WASD move &nbsp;·&nbsp; MOUSE look &nbsp;·&nbsp; SHIFT sprint &nbsp;·&nbsp; SPACE jump<br>
     1-3 weapon slots &nbsp;·&nbsp; 4 fists &nbsp;·&nbsp; I inventory<br>
-    C / CTRL crouch (hold) or slide (while sprinting) &nbsp;·&nbsp; Q / E lean &nbsp;·&nbsp; LMB fire &nbsp;·&nbsp; RMB aim &nbsp;·&nbsp; R reload &nbsp;·&nbsp; F melee<br>
+    C / CTRL crouch (hold) or slide (while sprinting) &nbsp;·&nbsp; Q / E lean &nbsp;·&nbsp; DIG SITE: LMB dig &nbsp;·&nbsp; LMB fire &nbsp;·&nbsp; RMB aim &nbsp;·&nbsp; R reload &nbsp;·&nbsp; F melee<br>
     T first / third person &nbsp;·&nbsp; G scoreboard (multiplayer) &nbsp;·&nbsp; WHEEL cycle weapons &nbsp;·&nbsp; TAB shotgun ammo (needs reload) &nbsp;·&nbsp; M mute
   </div>
 </div>
@@ -266,6 +304,46 @@
   <div class="btn-row">
     <button id="mp-join" class="panel menu-btn" disabled>JOIN GAME</button>
     <button id="mp-back" class="panel menu-btn">BACK</button>
+  </div>
+</div>
+
+<div id="overlay-solo" class="overlay">
+  <h1>SANDBOX</h1>
+  <h2>PICK A SOLO MODE</h2>
+  <div class="btn-row">
+    <button id="solo-sandbox" class="panel menu-btn">SANDBOX<small>OPEN WORLD · NO ENEMIES</small></button>
+    <button id="solo-dig" class="panel menu-btn">DIG SITE<small>ALONE · FIND THE UTILITIES, DIG, DON'T STRIKE</small></button>
+    <button id="solo-bots" class="panel menu-btn">DEATHMATCH VS BOTS<small>RESPAWNS · KILL LIMIT · SCOREBOARD</small></button>
+  </div>
+  <div id="solo-status"></div>
+  <button id="solo-back" class="panel menu-btn">BACK</button>
+</div>
+
+<div id="overlay-dig" class="overlay">
+  <h1>DIG SITE</h1>
+  <h2>READ THE SURFACE · DIG DEEP · DON'T STRIKE</h2>
+  <div class="panel mp-card">
+    <label for="dig-name">USERNAME</label>
+    <input id="dig-name" type="text" maxlength="16" autocomplete="off" spellcheck="false">
+    <div id="dig-error"></div>
+    <div>IN THE LOBBY</div>
+    <ul id="dig-players"></ul>
+    <div id="dig-status"></div>
+  </div>
+  <div class="btn-row">
+    <button id="dig-join" class="panel menu-btn" disabled>JOIN LOBBY</button>
+    <button id="dig-start" class="panel menu-btn" disabled style="display:none">START GAME</button>
+    <button id="dig-back" class="panel menu-btn">BACK</button>
+  </div>
+</div>
+
+<div id="overlay-dig-results" class="overlay">
+  <h1>TIME'S UP</h1>
+  <h2 id="dig-winner"></h2>
+  <div class="panel mp-card"><table id="dig-results-table"></table></div>
+  <div class="btn-row">
+    <button id="dig-again" class="panel menu-btn">BACK TO LOBBY</button>
+    <button id="dig-menu" class="panel menu-btn">MAIN MENU</button>
   </div>
 </div>
 

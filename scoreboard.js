@@ -6,6 +6,7 @@
 const FEED_LIFETIME = 5000; // ms
 const FEED_MAX = 5;
 const MINI_ROWS = 3;
+const BOARD_REFRESH = 0.25; // seconds between redraws, so the DOM is not rebuilt every frame
 
 /** Kills per death. With no deaths yet it is simply the kill count, so a flawless 5-0 reads 5.00. */
 export function kdRatio(kills, deaths) {
@@ -31,6 +32,7 @@ export class Scoreboard {
     this.el = { board: $('scoreboard'), mini: $('mini-board'), feed: $('kill-feed'), respawn: $('respawn'), ping: $('ping') };
     this.visible = false;
     this.lastPing = -1;
+    this.boardTimer = 0;
   }
 
   setVisible(visible) {
@@ -58,10 +60,30 @@ export class Scoreboard {
       }
     });
     const heading = document.createElement('h3');
-    const ping = document.createElement('small');
-    ping.textContent = `PING ${Math.round(pingMs)} MS`;
-    heading.append(title, ping);
+    heading.append(title);
+    if (pingMs !== null) {
+      const ping = document.createElement('small');
+      ping.textContent = `PING ${Math.round(pingMs)} MS`;
+      heading.append(ping);
+    }
     this.el.board.replaceChildren(heading, table);
+  }
+
+  /**
+   * Once per frame: show the full table (replacing the corner top three) or the top three,
+   * and redraw whichever is showing a few times a second. `pingMs` null hides the ping (solo).
+   */
+  refresh(dt, fullTableVisible, rows, pingMs, title) {
+    if (fullTableVisible !== this.visible) {
+      this.setVisible(fullTableVisible);
+      this.setMiniVisible(!fullTableVisible);
+      this.boardTimer = 0;
+    }
+    this.boardTimer -= dt;
+    if (this.boardTimer > 0) return;
+    this.boardTimer = BOARD_REFRESH;
+    if (fullTableVisible) this.render(rows, pingMs, title);
+    else this.renderMini(rows);
   }
 
   /** The always-visible top three, in the corner. */

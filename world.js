@@ -92,6 +92,8 @@ export class World {
     this.group = null;
     this.stepHeight = config.player.stepHeight;
     this.solids = [];
+    // Dug holes (DIG SITE): tile "x,z" -> depth in metres. A hole lowers the ground of its whole tile.
+    this.depressions = new Map();
     // Set by move(): which axes were blocked. Read right after calling it.
     this.hitX = false;
     this.hitZ = false;
@@ -106,7 +108,8 @@ export class World {
   }
 
   /**
-   * (Re)build the level for a mode: 'waves' = the small arena, 'sandbox' = the big open map.
+   * (Re)build the level for a mode: 'waves' = the small arena, 'sandbox' = the big open map,
+   * 'dig' = an empty walled site that dig-world.js fills in.
    * Everything solid lives in one group so a rebuild is a clean swap. The caller must
    * re-render the (static) shadow map afterwards: renderer.shadowMap.needsUpdate = true.
    */
@@ -118,13 +121,14 @@ export class World {
     this.group = new THREE.Group();
     this.scene.add(this.group);
     this.solids = [];
-    const area = mode === 'sandbox' ? this.config.sandbox : this.config.arena;
+    this.depressions.clear();
+    const area = { sandbox: this.config.sandbox, dig: this.config.dig }[mode] ?? this.config.arena;
     this.half = area.half;
     this._fitSun();
-    this._buildFloor(this.group);
+    if (mode !== 'dig') this._buildFloor(this.group); // the dig site builds its own ground, tile by tile, so tiles can be dug out
     this._buildWalls(this.group, area.wallHeight);
     if (mode === 'sandbox') this._buildSandboxProps(this.group);
-    else this._buildProps(this.group);
+    else if (mode !== 'dig') this._buildProps(this.group); // the dig site brings its own props (dig-world.js)
   }
 
   _fitSun() {
@@ -274,6 +278,20 @@ export class World {
     });
   }
 
+  /** A visible solid block (a house) added to the current level. */
+  addBlock(cx, cz, width, height, depth, mat) {
+    this._addBox(this.group, cx, cz, width, height, depth, mat, 4);
+  }
+
+  /** An invisible solid for something that has its own mesh (a hydrant, a pole). */
+  addCollider(cx, cz, width, height, depth) {
+    this.solids.push({
+      minX: cx - width / 2, maxX: cx + width / 2,
+      minZ: cz - depth / 2, maxZ: cz + depth / 2,
+      height, ramp: null,
+    });
+  }
+
   _addRamp(scene, minX, maxX, minZ, maxZ, height, climbs, mat) {
     const alongX = climbs === '+x' || climbs === '-x';
     const length = alongX ? maxX - minX : maxZ - minZ;
@@ -302,7 +320,7 @@ export class World {
     return s.height * t;
   }
 
-  /** Floor height directly beneath a point (0 on open ground). */
+  /** Floor height directly beneath a point: 0 on open ground, above 0 on solids, below 0 in a dug hole. */
   groundHeight(x, z) {
     let best = 0;
     for (const s of this.solids) {
@@ -310,7 +328,29 @@ export class World {
       const h = this._surfaceHeight(s, x, z);
       if (h > best) best = h;
     }
-    return best;
+    return best > 0 ? best : -this.holeDepth(x, z);
+  }
+
+  /** Depth in metres of the hole under a point (0 when there is none). */
+  holeDepth(x, z) {
+    if (this.depressions.size === 0) return 0;
+    return this.depressions.get(this._tileKey(x, z)) ?? 0;
+  }
+
+  /** Dig the tile under (x, z) down to `depth` metres; 0 fills it. Used by the DIG SITE. */
+  setHoleDepth(x, z, depth) {
+    const key = this._tileKey(x, z);
+    if (depth > 0) this.depressions.set(key, depth);
+    else this.depressions.delete(key);
+  }
+
+  /** Fill every hole in (leaving a DIG SITE). */
+  clearHoles() {
+    this.depressions.clear();
+  }
+
+  _tileKey(x, z) {
+    return `${Math.floor(x + this.half)},${Math.floor(z + this.half)}`;
   }
 
   /**
@@ -329,6 +369,8 @@ export class World {
       if (dx * dx + dz * dz >= r2) continue;
       if (this._surfaceHeight(s, nx, nz) > limit) return true;
     }
+    // The wall of a hole: ground higher than a step above the feet cannot be walked onto from inside it.
+    if (this.depressions.size > 0 && feetY < 0 && -this.holeDepth(x, z) > limit) return true;
     return false;
   }
 

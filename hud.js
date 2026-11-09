@@ -35,7 +35,7 @@ export class Hud {
       crosshair: $('crosshair'), scope: $('scope'), hitmarker: $('hitmarker'),
       wave: $('wave'), kills: $('kills'), banner: $('banner'),
       vignette: $('vignette'), numbers: $('damage-numbers'),
-      start: $('overlay-start'), modeSandbox: $('mode-sandbox'), modeWaves: $('mode-waves'), modeMultiplayer: $('mode-multiplayer'), resume: $('start-resume'), toMenu: $('start-menu'), deadMenu: $('dead-menu'), startTitle: $('start-sub'), waveGroup: $('wave-pill'), modeButtons: $('mode-buttons'), pauseButtons: $('pause-buttons'), dead: $('overlay-dead'), deadWave: $('dead-wave'), deadKills: $('dead-kills'),
+      start: $('overlay-start'), modeSandbox: $('mode-sandbox'), modeWaves: $('mode-waves'), modeMultiplayer: $('mode-multiplayer'), modeDig: $('mode-dig'), resume: $('start-resume'), toMenu: $('start-menu'), deadMenu: $('dead-menu'), startTitle: $('start-sub'), waveGroup: $('wave-pill'), modeButtons: $('mode-buttons'), pauseButtons: $('pause-buttons'), dead: $('overlay-dead'), deadWave: $('dead-wave'), deadKills: $('dead-kills'),
     };
 
     // Cached values so the DOM is only touched when something actually changes.

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 const HALF_DEGREES_TO_RADIANS = Math.PI / 360; // fov is in degrees; the maths needs half the angle in radians
+const CLIMB_MIN_DEPTH = 0.05; // metres below the surface before a blocked push counts as climbing a hole wall
 const LEAN_STEPS = [1, 0.5]; // full lean, then half a lean, before giving up
 const DEAD_EYE_HEIGHT = 0.35; // metres above the floor, once dead
 const DEAD_ROLL = 0.6; // radians the view tilts over when dead
@@ -73,8 +74,8 @@ export class Player {
 
     this.health = c.maxHealth;
     this.alive = true;
-    this.thirdPerson = false;
-    this.tpBlend = 0; // 0 = first person eye, 1 = full over-the-shoulder camera
+    this.thirdPerson = this.thirdPerson ?? false; // your chosen view survives respawns and new matches
+    this.tpBlend = this.thirdPerson ? 1 : 0; // 0 = first person eye, 1 = full over-the-shoulder camera
 
     this.grounded = true;
     this.coyote = 0;
@@ -304,6 +305,7 @@ export class Player {
     world.move(this.pos, this.vel.x * dt, this.vel.z * dt, c.radius, this.pos.y);
     if (world.hitX) this.vel.x = 0;
     if (world.hitZ) this.vel.z = 0;
+    if (hasInput && (world.hitX || world.hitZ)) this._climbHoleWall(dt);
     this._integrateVertical(dt);
 
     // --- Camera feel (bob, landing dip, eye height, roll) ---
@@ -351,6 +353,19 @@ export class Player {
       if (!this.world.isBlocked(x, z, c.leanClearance, eyeY - c.stepHeight)) return fraction;
     }
     return 0;
+  }
+
+  /**
+   * Standing in a dug hole and pushing against its wall climbs it, at climbSpeed. Without this a
+   * deep hole would be a trap: the wall is higher than a step or a jump. Once your feet are within
+   * a step of the surface you simply walk out.
+   */
+  _climbHoleWall(dt) {
+    const inHole = this.pos.y < -CLIMB_MIN_DEPTH && this.world.holeDepth(this.pos.x, this.pos.z) > 0;
+    if (!inHole) return;
+    this.pos.y = Math.min(0, this.pos.y + this.cfg.climbSpeed * dt);
+    this.vel.y = 0;
+    this.grounded = false; // so the ground-snap does not pull you straight back down
   }
 
   _integrateVertical(dt) {
