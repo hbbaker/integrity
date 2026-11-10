@@ -5,7 +5,7 @@
  *   - It hits nothing: the cable flies out and falls back.
  * Pressing fire again while the cable is out lets go.
  *
- * Every number comes from `tuning`, which a subclass supplies (see game/combat/fiber-reel.js), so a
+ * Every number comes from `tuning`, which a subclass supplies (see game/weapons/fiber-reel.js), so a
  * game tunes a grapple in one small file:
  *   range            metres the cable reaches
  *   aimRadius        how forgiving the hook is against targets
@@ -150,8 +150,8 @@ export class GrappleWeapon extends Weapon {
   /* -------------------------------- viewmodel ----------------------------- */
 
   /** The spool spins while the cable is out. */
-  modelState() {
-    return { active: this.hook !== null || this.missTime > 0 };
+  modelState(holder) {
+    return { ...super.modelState(holder), active: this.hook !== null || this.missTime > 0 };
   }
 
   afterPose(holder, model, dt, time) {

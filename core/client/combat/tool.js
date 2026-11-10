@@ -8,4 +8,9 @@ import { Holdable } from './holdable.js';
 
 export class Tool extends Holdable {
   get melee() { return true; } // no aiming and no reloading while a tool is in hand
+
+  /** A tool model animates while it swings. */
+  modelState(holder) {
+    return { swing: holder.swingT >= 0 };
+  }
 }

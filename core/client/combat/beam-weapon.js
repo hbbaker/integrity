@@ -235,13 +235,13 @@ export class BeamWeapon extends Weapon {
   }
 
   /** The energy core refills over a recharge; power and firing drive the model's glow. */
-  modelState() {
+  modelState(holder) {
     const c = this.cfg;
     let energy = this.mag / c.mag;
     if (this.reloading) {
       const p = clamp(1 - this.reloadTimer / c.reloadTime, 0, 1);
       energy = this.reloadFromEnergy + (Math.min(1, (this.mag + this.reserve) / c.mag) - this.reloadFromEnergy) * easeInOut(p);
     }
-    return { firing: this.beamOn, energy, power: this.beamPower(), reloading: this.reloading };
+    return { ...super.modelState(holder), firing: this.beamOn, energy, power: this.beamPower() };
   }
 }

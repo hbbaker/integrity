@@ -1,3 +1,5 @@
+import { WEAPON_LIST } from './weapons/index.js';
+
 /* ========================================================================== *
  *  CONFIG: every tuning value lives here. Distances are metres, times are
  *  seconds, angles are radians unless noted.
@@ -20,6 +22,10 @@ export const CONFIG = {
     slideEyeHeight: 0.85,
     crouchEyeHeight: 1.05, // hold C / Ctrl while not sprinting
     crouchSpeedMul: 0.55,
+    // Crouching in the air (the slam): sideways speed fades and the fall builds up, so you drop into a crouch smoothly.
+    slamSpeed: 11, // m/s: the fastest the slam falls
+    slamAccel: 38, // m/s each second the fall speeds up (gravity alone is 24)
+    slamDamping: 7, // how fast sideways speed fades: higher stops you sooner (7 loses half in 0.1 s)
     leanDistance: 0.45, // metres the eye shifts sideways at a full lean (Q / E)
     leanTilt: 0.2, // radians the view rolls at a full lean
     leanSpeed: 12, // how fast the lean moves in and out
@@ -98,73 +104,7 @@ export const CONFIG = {
     heatDecay: 45,
     crosshair: { base: 6, perSpeed: 1.1, air: 10 },
     quickMelee: { damage: 28, range: 2.8, cooldown: 0.5, knockback: 11, cone: 0.8, stun: 0.45 },
-    list: [
-      { id: 'fists', name: 'WORK GLOVES', type: 'melee', melee: true, damage: 20, interval: 0.3, range: 2.6, cone: 0.78, knockback: 9, stun: 0.45 },
-      {
-        id: 'pistol', name: 'NAIL GUN', type: 'firearm', auto: false, damage: 24, interval: 0.2, mag: 12, reserve: 60, maxReserve: 96,
-        reloadTime: 1.0, spread: 0.004, pellets: 1, range: 120, critMul: 2, knockback: 2.5, stun: 0.1,
-        camKick: 0.018, camYaw: 0.004, climb: 0.002, kickZ: 0.022, kickRot: 0.07, flashSize: 0.3, worldLight: 25,
-        heat: 5, tracerColor: 0xfff27a,
-        ads: { x: 0, y: -0.093, z: -0.32, fovDrop: 12 }, // fovDrop = degrees of zoom
-      },
-      {
-        // TAB swaps shell type. The shells in the tube go back to reserve, and you must reload
-        // (shell by shell) with the new type. Fields in ammoTypes override the shared ones.
-        id: 'shotgun', name: 'RIVET BLASTER', type: 'firearm', pump: true, auto: false, interval: 0.8, mag: 6, critMul: 2,
-        perShell: true, startTime: 0.3, shellTime: 0.42, endTime: 0.25,
-        camYaw: 0.008, kickRot: 0.12, worldLight: 40, heat: 14,
-        ads: { x: 0, y: -0.057, z: -0.28, fovDrop: 8 },
-        defaultAmmo: 'buckshot',
-        ammoTypes: {
-          buckshot: {
-            // 8 fat pellets (pelletRadius = how forgiving each pellet is), each with its own damage
-            // number. Damage tapers from falloffStart to falloffEnd down to falloffMin.
-            label: 'RIVETS', pickupKey: 'shotgun', reserve: 24, maxReserve: 36,
-            damage: 11, pellets: 8, spread: 0.055, pelletRadius: 0.1, range: 60,
-            falloffStart: 5, falloffEnd: 25, falloffMin: 0.15, pelletNumbers: true,
-            knockback: 8, stun: 0.25, camKick: 0.05, climb: 0.004, kickZ: 0.045, flashSize: 0.5, tracerColor: 0xffb347,
-          },
-          slug: {
-            // One heavy, accurate, long-range projectile.
-            label: 'ANCHOR BOLT', pickupKey: 'slug', reserve: 8, maxReserve: 20,
-            interval: 0.95, damage: 62, pellets: 1, spread: 0.007, pelletRadius: 0.04, range: 140,
-            falloffStart: 30, falloffEnd: 90, falloffMin: 0.6, pelletNumbers: false,
-            knockback: 14, stun: 0.35, camKick: 0.075, climb: 0.008, kickZ: 0.06, flashSize: 0.55, tracerColor: 0xffe9b0,
-          },
-        },
-      },
-      {
-        id: 'smg', name: 'FRAMING NAILER', type: 'firearm', auto: true, damage: 7, interval: 0.075, mag: 30, reserve: 120, maxReserve: 180,
-        reloadTime: 1.5, spread: 0.02, pellets: 1, range: 90, critMul: 2, knockback: 1.2, stun: 0.05,
-        camKick: 0.007, camYaw: 0.006, climb: 0.0045, kickZ: 0.014, kickRot: 0.035, flashSize: 0.22, worldLight: 18,
-        heat: 2.5, tracerColor: 0x9ff3ff,
-        ads: { x: 0, y: -0.08, z: -0.3, fovDrop: 14 },
-      },
-      {
-        // ARC TORCH: a continuous beam. `mag` is energy; it drains at drainRate per second of firing, so a
-        // full cell is mag/drainRate seconds of beam. Power starts at 100% and eases down to powerMin over
-        // falloffTime seconds of firing; ONLY a reload (recharge) restores it. Damage and beam width scale with it.
-        id: 'raygun', name: 'ARC TORCH', type: 'beam', beam: true, auto: true,
-        dps: 95, tick: 0.1, critMul: 1.5, range: 90, beamRadius: 0.12, knockback: 0.5,
-        mag: 100, reserve: 200, maxReserve: 300, drainRate: 12, reloadTime: 1.8,
-        falloffTime: 6, powerMin: 0.35,
-        flashTint: 0x55ffb0, flashSize: 0.3, worldLight: 0, heat: 0,
-        ads: { x: 0, y: -0.088, z: -0.3, fovDrop: 10 },
-      },
-      {
-        // Bolt-action surveyor's transit rifle (the sniper). `scope` hides the gun and draws a scope overlay while aiming; fovDrop is the zoom.
-        // It is very accurate when aimed, but the hip shot wanders (spread).
-        id: 'sniper', name: 'TRANSIT RIFLE', type: 'firearm', auto: false, boltAction: true, scope: true, damage: 96, interval: 0.9,
-        mag: 5, reserve: 20, maxReserve: 40, reloadTime: 2.4, spread: 0.05, adsSpreadCut: 0.99, adsAccurateAt: 0.55, adsSpeed: 24, pellets: 1, range: 250, critMul: 2.5,
-        knockback: 16, stun: 0.5, camKick: 0.07, camYaw: 0.01, climb: 0.012, kickZ: 0.06, kickRot: 0.12,
-        flashSize: 0.5, worldLight: 40, heat: 16, tracerColor: 0xbfe8ff,
-        ads: { x: 0, y: -0.09, z: -0.25, fovDrop: 52 },
-      },
-      // The shovel is the DIG SITE tool. Hidden: it is not in the inventory and never in a loadout slot.
-      { id: 'shovel', name: 'SHOVEL', type: 'tool', melee: true, hidden: true, damage: 0, interval: 0.6, range: 0, cone: 0, knockback: 0, stun: 0 },
-      // The grapple. Its numbers (range, pull speed, cooldown) are in game/combat/fiber-reel.js.
-      { id: 'reel', name: 'FIBER REEL', type: 'grapple' },
-    ],
+    list: WEAPON_LIST, // one file per weapon in game/weapons/: its numbers are the `config` there
   },
 
   enemies: {

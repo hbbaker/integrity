@@ -24,8 +24,8 @@ game/    CABLE BOTS itself
   modes/         the five game modes (sandbox, waves, deathmatch, bots, dig site)
   rules/         match rules each mode uses
   entities/      bots, pickups, remote players
-  assets/        procedural models: the holdables, the robot, the dig site's objects
-  combat/        the game's item types and models, on the core's Holdable system
+  weapons/       one file per weapon (numbers, class and model together), plus shared.js and index.js
+  assets/        procedural models: the robot and the dig site's objects
   world/         level builders
   ui/            HUD, menus, settings screen, on-screen keyboard, the action table
   server/        the Rust game server: DIG SITE on the core's GameServer

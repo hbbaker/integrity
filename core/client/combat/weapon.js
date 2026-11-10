@@ -287,6 +287,25 @@ export class Weapon extends Holdable {
     }
   }
 
+  /**
+   * What a model's `animate(dt, time, state)` reads: ammo (0..1), rounds and capacity, pulse (1 right after a shot,
+   * falling to 0 as the next one gets ready), aiming (0..1), reloading, and swing (a melee swing is in progress).
+   */
+  modelState(holder) {
+    const c = this.cfg;
+    const capacity = this.base.mag || 0;
+    const pulse = c.interval > 0 ? clamp(holder.cooldown / c.interval, 0, 1) : 0;
+    return {
+      rounds: this.mag,
+      capacity,
+      ammo: capacity ? clamp(this.mag / capacity, 0, 1) : 1,
+      pulse,
+      aiming: holder.adsBlend,
+      reloading: this.reloading,
+      swing: holder.swingT >= 0 || holder.punchT.some((t) => t >= 0),
+    };
+  }
+
   /* -------------------------------- display ------------------------------- */
 
   hudState() {

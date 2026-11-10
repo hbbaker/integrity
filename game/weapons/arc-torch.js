@@ -1,17 +1,30 @@
+/*
+ * ARC TORCH: a continuous beam of arc light, in an organic alien casing: everything is a lathe, tube, torus, sphere
+ * or capsule: a teardrop body, a flared emitter horn with three curved prongs around a glowing orb, glowing coil
+ * rings, a glowing vein spiralling along the body, a glass energy chamber whose level shows the charge, and a swept
+ * grip with tail fins.
+ *
+ * Barrels point down -Z. The glow colour follows the beam's power: green at full power, fading to amber as the
+ * timed falloff eats into it.
+ */
+
 import * as THREE from 'three';
 import { material } from '../../core/client/graphics/materials.js';
+import { BeamWeapon } from '../../core/client/combat/beam-weapon.js';
+import { makeArm } from './shared.js';
 
-/*
- * XENO RAY: an organic alien raygun with no hard edges. Everything is a lathe,
- * tube, torus, sphere or capsule: a teardrop body, a flared emitter horn with three
- * curved prongs around a glowing orb, glowing coil rings, a glowing vein spiralling
- * along the body, a glass energy chamber whose level shows the charge, and a
- * swept grip with tail fins.
- *
- * Barrels point down -Z (the lathe axis is rotated so +profile-y runs to the muzzle).
- * The glow colour follows the beam's power: alien green at full power, fading to
- * amber as the timed falloff eats into it.
- */
+/** The numbers: damage, speed, ammo, recoil, sights. */
+export const config = {
+  // ARC TORCH: a continuous beam. `mag` is energy; it drains at drainRate per second of firing, so a
+  // full cell is mag/drainRate seconds of beam. Power starts at 100% and eases down to powerMin over
+  // falloffTime seconds of firing; ONLY a reload (recharge) restores it. Damage and beam width scale with it.
+  id: 'raygun', name: 'ARC TORCH', type: 'beam', beam: true, auto: true,
+  dps: 95, tick: 0.1, critMul: 1.5, range: 90, beamRadius: 0.12, knockback: 0.5,
+  mag: 100, reserve: 200, maxReserve: 300, drainRate: 12, reloadTime: 1.8,
+  falloffTime: 6, powerMin: 0.35,
+  flashTint: 0x55ffb0, flashSize: 0.3, worldLight: 0, heat: 0,
+  ads: { x: 0, y: -0.088, z: -0.3, fovDrop: 10 },
+};
 
 const GREEN = new THREE.Color(0x4dffb0);
 const AMBER = new THREE.Color(0xff8f2e);
@@ -62,11 +75,10 @@ function at(object, x, y, z) {
 const damp = (current, target, rate, dt) => current + (target - current) * (1 - Math.exp(-rate * dt));
 
 /**
- * @param makeArm  the shared first-person arm builder from weapons.js
  * Returns { root, muzzle, home, parts, animate(dt, time, state) } where state is
  * { firing, energy 0..1, power 0..1, reloading }.
  */
-export function buildRaygun(makeArm) {
+export function buildArcTorch() {
   const root = new THREE.Group();
 
   const bodyMat = new THREE.MeshPhysicalMaterial({
@@ -212,3 +224,9 @@ export function buildRaygun(makeArm) {
     parts: { support: { object: leftArm, baseY: leftArm.position.y } },
   };
 }
+
+export const weapon = {
+  config,
+  holdable: { type: 'beam', class: BeamWeapon },
+  model: { build: buildArcTorch, beamColor: glowColor },
+};

@@ -5,7 +5,7 @@ import { ModeManager } from '../core/client/modes/mode-manager.js';
 import { COMIC_FONT } from './ui/theme.js';
 import { World } from './world/world.js';
 import { Player } from '../core/client/character/player.js';
-import { Weapons } from './combat/weapons.js';
+import { Weapons } from './weapons/index.js';
 import { Enemies } from './entities/enemies.js';
 import { Pickups } from './entities/pickups.js';
 import { Hud } from './ui/hud.js';
@@ -219,6 +219,7 @@ player.onJump = () => audio.jump();
 player.onLand = (impact) => audio.land(impact);
 player.onSlide = () => audio.slide();
 player.onMantle = () => audio.mantle();
+player.onSlam = () => audio.slide();
 player.onDeath = () => {
   audio.deathDialup();
   if (modes.onPlayerDeath()) return; // a mode may respawn the player or show its own end screen

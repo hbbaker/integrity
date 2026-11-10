@@ -90,6 +90,7 @@ export class Player {
     this.turnPending = 0; // radians turned since the last step
     this.turnIndex = 0;
     this.viewTurnRate = 0; // how fast the player is turning their view, radians per second
+    this.slamming = false; // dropping straight down after crouching in the air
     this.pull = null; // a grapple pulling the player (see pullToward)
     this.mantle = null; // a ledge climb in progress (see _tryMantle)
     this.grounded = true;
@@ -146,6 +147,15 @@ export class Player {
     this.viewTurnRate = turned / (this.turnWindow.length * dt);
   }
 
+  /** While slamming: sideways speed dies away quickly, and the fall speeds up to slamSpeed (no sudden plunge). */
+  _stepSlam(dt) {
+    const c = this.cfg;
+    const keep = Math.exp(-c.slamDamping * dt);
+    this.vel.x *= keep;
+    this.vel.z *= keep;
+    this.vel.y = Math.max(this.vel.y - c.slamAccel * dt, -c.slamSpeed);
+  }
+
   /**
    * Mantling: in the air, moving into a ledge that is too high to step or jump onto but within reach
    * (mantleMaxHeight), the player grabs it and is pulled up and over. It needs a flat top at least
@@ -170,6 +180,7 @@ export class Player {
       fromX: pos.x, fromY: pos.y, fromZ: pos.z, toX: landX, toY: top, toZ: landZ, time: 0,
     };
     this.vel.set(0, 0, 0);
+    this.slamming = false;
     if (this.onMantle) this.onMantle();
   }
 
@@ -202,6 +213,7 @@ export class Player {
    */
   pullToward(target, { speed, arrive = 1.5, seconds = 3 }) {
     this.pull = { target, speed, arrive, time: seconds, blocked: 0 };
+    this.slamming = false;
     this.sliding = false;
   }
 
@@ -323,6 +335,7 @@ export class Player {
       this.alive = false;
       this.pull = null;
       this.mantle = null;
+      this.slamming = false;
       if (this.onDeath) this.onDeath();
     }
   }
@@ -372,12 +385,22 @@ export class Player {
       if (this.onSlide) this.onSlide();
     }
 
+    // --- Air slam: crouching in the air bleeds off your momentum and pushes you down into a crouch ---
+    if (input.slidePressed && !this.grounded && !this.slamming && !this.pull && !this.mantle && this.alive) {
+      this.slamming = true;
+      this.vel.y = Math.min(this.vel.y, 0); // a rising jump stops rising; the fall then speeds up gradually
+      this.sprinting = false;
+      if (this.onSlam) this.onSlam();
+    }
+
     // --- Slide cancel: tapping sprint ends the slide and keeps the speed you have ---
     if (this.sliding && input.sprintPressed) this.sliding = false;
 
     // --- Sprint state ---
     if (!input.sprintHeld) this.sprintLocked = false;
-    this.sprinting = input.sprintHeld && iz > 0 && !this.sprintLocked && !this.sliding && !this.crouching;
+    // A sprint cannot be started in the air: a sprint you jumped with carries on, but once it stops it waits for the ground.
+    const mayStartSprint = this.grounded || this.sprinting;
+    this.sprinting = input.sprintHeld && iz > 0 && !this.sprintLocked && !this.sliding && !this.crouching && mayStartSprint;
     // Crouch: hold C / Ctrl while not sprinting (pressing it while sprinting slides instead).
     this.crouching = input.crouchHeld && !this.sprinting && !this.sliding;
 
@@ -422,7 +445,7 @@ export class Player {
           this.vel.x += (dx / dist) * maxDelta;
           this.vel.z += (dz / dist) * maxDelta;
         }
-      } else if (hasInput) {
+      } else if (hasInput && !this.slamming) { // a slam is straight down: no steering
         // Air control: only add speed along the wish direction, never remove any.
         const current = this.vel.x * this.wish.x + this.vel.z * this.wish.z;
         const add = target - current;
@@ -440,7 +463,8 @@ export class Player {
       this._stepMantle(dt);
     } else {
       const pulled = this._applyPull(input, dt);
-      if (!pulled) this.vel.y -= c.gravity * dt; // a grapple carries you, so gravity waits
+      if (this.slamming) this._stepSlam(dt);
+      else if (!pulled) this.vel.y -= c.gravity * dt; // a grapple carries you, so gravity waits
       world.move(this.pos, this.vel.x * dt, this.vel.z * dt, c.radius, this.pos.y);
       if (pulled && (world.hitX || world.hitZ)) this._pullBlocked(dt);
       if (world.hitX) this.vel.x = 0;
@@ -524,6 +548,7 @@ export class Player {
       this.pos.y = ground;
       this.vel.y = 0;
       this.grounded = true;
+      this.slamming = false;
       if (!wasGrounded && impact > c.landThreshold) {
         this.dipVel -= Math.min(impact, c.maxLandImpact) * c.landDip;
         if (this.onLand) this.onLand(impact);

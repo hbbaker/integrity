@@ -51,6 +51,7 @@ function setup(offset, ads) {
   enemies.clear();
   player.reset(); player.pos.set(-20, 0, 22); player.prevPos.copy(player.pos); player.yaw = 0; player.pitch = -Math.atan(0.45 / 20); player.invulnerable = true;
   weapons.reset(); weapons.select(sniper);
+  weapons.slots[sniper].cfg.spread = 0; // shots go exactly where aimed, so a hit or miss comes only from the hit volumes
   for (let i = 0; i < 40; i++) step();
   weapons.adsBlend = ads ? 1 : 0;
   const bot = enemies._spawnAt('cable', -20 + offset, 2, 1);

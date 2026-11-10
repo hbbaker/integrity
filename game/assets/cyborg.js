@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { material } from '../../core/client/graphics/materials.js';
 import { surfaceMaterial } from '../../core/client/graphics/surfaces.js';
 import { MuzzleFlash } from '../../core/client/graphics/particles.js';
-import { buildHeldModel } from './holdable-models.js';
+import { buildHeldModel } from '../weapons/index.js';
 import { clamp, lerp, damp, easeInOut } from '../../core/client/engine/math.js';
 
 /*
