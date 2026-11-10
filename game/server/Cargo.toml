@@ -1,0 +1,8 @@
+[package]
+name = "cable-bots-server"
+version = "0.1.0"
+edition = "2021"
+
+# The only dependency is the reusable core in this repository (std only, so it builds offline).
+[dependencies]
+server-core = { path = "../../core/server" }

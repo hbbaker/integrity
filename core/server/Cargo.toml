@@ -1,0 +1,8 @@
+[package]
+name = "server-core"
+version = "0.1.0"
+edition = "2021"
+description = "Reusable game server core: static files, WebSocket, JSON, a seeded RNG and a relay hub a game plugs into."
+
+# No dependencies on purpose: std only, so it builds offline.
+[dependencies]

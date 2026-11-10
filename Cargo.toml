@@ -1,0 +1,7 @@
+# One workspace for the game server: a reusable core and the game that plugs into it.
+[workspace]
+members = ["core/server", "game/server"]
+resolver = "2"
+
+[profile.release]
+opt-level = 3

@@ -1,0 +1,12 @@
+{
+  "name": "cable-bots",
+  "private": true,
+  "type": "module",
+  "description": "The game itself has no build step and no dependencies (Three.js comes from the import map). three is here only so the headless tests can load the game modules in Node.",
+  "scripts": {
+    "test": "node tests/run-all.mjs"
+  },
+  "devDependencies": {
+    "three": "0.187.0"
+  }
+}
