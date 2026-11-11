@@ -18,6 +18,7 @@ export const WEAPON_ICONS = {
   sniper: `<svg viewBox="0 0 100 50"><rect x="2" y="22" width="60" height="6" rx="2" fill="#cfd3d6" ${stroke}/><rect x="30" y="8" width="26" height="10" rx="4" fill="#3a6bff" ${stroke}/><rect x="52" y="20" width="26" height="12" rx="3" fill="#7a3cff" ${stroke}/><path d="M76 20h18l-4 18H74z" fill="#e3242b" ${stroke}/></svg>`,
   reel: `<svg viewBox="0 0 100 50"><rect x="10" y="16" width="58" height="20" rx="5" fill="#ffd800" ${stroke}/><circle cx="38" cy="14" r="15" fill="#7a3cff" ${stroke}/><circle cx="38" cy="14" r="6" fill="#cfd3d6" ${stroke}/><rect x="66" y="20" width="24" height="10" rx="3" fill="#9aa0a6" ${stroke}/><rect x="22" y="34" width="14" height="14" rx="3" fill="#e3242b" ${stroke}/></svg>`,
   drill: `<svg viewBox="0 0 100 50"><rect x="6" y="16" width="58" height="18" rx="6" fill="#ff6a00" ${stroke}/><path d="M64 14 L94 25 L64 36 Z" fill="#9aa0a6" ${stroke}/><rect x="30" y="32" width="10" height="14" rx="3" fill="#222" ${stroke}/></svg>`,
+  stopsign: `<svg viewBox="0 0 100 50"><rect x="44" y="26" width="8" height="22" fill="#cfd3d6" ${stroke}/><path d="M36 2h16l12 12v14l-12 12H36L24 28V14z" transform="translate(-4 -1)" fill="#e3242b" ${stroke}/></svg>`,
   smg: `<svg viewBox="0 0 100 50"><rect x="6" y="12" width="72" height="16" rx="4" fill="#7a3cff" ${stroke}/><rect x="40" y="26" width="12" height="20" rx="3" fill="#ffd800" ${stroke}/><rect x="64" y="26" width="10" height="18" rx="3" fill="#e3242b" ${stroke}/><rect x="78" y="14" width="16" height="10" rx="3" fill="#9aa0a6" ${stroke}/></svg>`,
 };
 

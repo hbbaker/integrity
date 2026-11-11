@@ -3,6 +3,9 @@ import { MuzzleFlash } from '../graphics/particles.js';
 import { clamp, damp, easeInOut } from '../engine/math.js';
 import { MAX_HITS } from './firearm.js';
 import { meleeStrike } from './melee.js';
+import { swingPose } from './swing-poses.js';
+
+const DEFAULT_SWING_TIME = 0.3; // seconds for a whole-item swing
 
 /*
  * HOLDABLE SYSTEM: the player's hands.
@@ -145,6 +148,8 @@ export class HoldableSystem {
     this.slideBlend = 0;
     this.reloadBlend = 0;
     this.swingT = -1;
+    this.swingStyle = 'jab';
+    this.swingDuration = DEFAULT_SWING_TIME;
     this.punchT = [-1, -1];
     this.nextHand = 0;
 
@@ -400,6 +405,8 @@ export class HoldableSystem {
       this.nextHand = 1 - this.nextHand; // alternate hands
     } else {
       this.swingT = 0;
+      this.swingStyle = this.current?.cfg?.swingStyle ?? 'jab';
+      this.swingDuration = this.current?.cfg?.swingTime ?? DEFAULT_SWING_TIME;
     }
   }
 
@@ -479,15 +486,16 @@ export class HoldableSystem {
 
     // Quick melee with something in hand: a forward jab.
     if (this.swingT >= 0) {
-      this.swingT += dt / 0.3;
+      this.swingT += dt / this.swingDuration;
       if (this.swingT >= 1) {
         this.swingT = -1;
       } else {
-        const s = Math.sin(Math.PI * this.swingT);
-        pose.z -= 0.22 * s;
-        pose.x -= 0.12 * s;
-        pose.ry += 0.7 * s;
-        pose.rx += 0.25 * s;
+        const swing = swingPose(this.swingStyle, this.swingT);
+        pose.x += swing.x;
+        pose.y += swing.y;
+        pose.z += swing.z;
+        pose.rx += swing.rx;
+        pose.ry += swing.ry;
       }
     }
 

@@ -22,9 +22,10 @@ import { weapon as transitRifle } from './transit-rifle.js';
 import { weapon as shovel } from './shovel.js';
 import { weapon as fiberReel } from './fiber-reel.js';
 import { weapon as boringLauncher } from './boring-launcher.js';
+import { weapon as stopSign } from './stop-sign.js';
 
 /** In list order: the position here is the item's index everywhere (loadout slots, the wheel, the inventory). */
-export const WEAPONS = [workGloves, nailGun, rivetBlaster, framingNailer, arcTorch, transitRifle, shovel, fiberReel, boringLauncher];
+export const WEAPONS = [workGloves, nailGun, rivetBlaster, framingNailer, arcTorch, transitRifle, shovel, fiberReel, boringLauncher, stopSign];
 
 /** CONFIG.weapons.list. */
 export const WEAPON_LIST = WEAPONS.map((entry) => entry.config);

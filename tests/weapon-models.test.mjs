@@ -68,7 +68,7 @@ const emissiveMaterials = (root) => {
   root.traverse((o) => { if (o.material?.emissiveIntensity > 0 && o.material.emissive.getHex() !== 0) found.add(o.material); });
   return [...found];
 };
-for (const id of ['pistol', 'shotgun', 'smg', 'sniper', 'reel', 'drill', 'shovel', 'fists']) {
+for (const id of ['pistol', 'shotgun', 'smg', 'sniper', 'reel', 'drill', 'shovel', 'stopsign', 'fists']) {
   const first = HOLDABLE_MODELS[id].build();
   let meshes = 0;
   first.root.traverse((o) => { if (o.isMesh) meshes += 1; });
@@ -176,7 +176,7 @@ const shoulderGap = (index) => {
   });
   return { count: worlds.length, worst: Math.max(...gaps) };
 };
-for (const id of ['pistol', 'shotgun', 'smg', 'sniper', 'reel', 'drill', 'shovel', 'fists']) {
+for (const id of ['pistol', 'shotgun', 'smg', 'sniper', 'reel', 'drill', 'shovel', 'stopsign', 'fists']) {
   const index = CONFIG.weapons.list.findIndex((item) => item.id === id);
   weapons.reset(); weapons.select(index);
   for (let i = 0; i < 40; i++) { player.update(1 / 60, input); weapons.update(1 / 60, input); weapons.updateView(1 / 60, i / 60); }

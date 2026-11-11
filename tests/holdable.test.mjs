@@ -43,7 +43,7 @@ const enemies = new Enemies({ cfg: CONFIG, scene, world, fx, player });
 // --- the class tree ---
 check(Weapon.prototype instanceof Holdable && Tool.prototype instanceof Holdable, 'weapons and tools are Holdables');
 check([Firearm, BeamWeapon, MeleeWeapon].every((cls) => cls.prototype instanceof Weapon), 'firearms, beam weapons and melee weapons are Weapons');
-check(Object.keys(HOLDABLE_TYPES).sort().join() === 'beam,firearm,grapple,melee,projectile,tool', 'the game registers six holdable types');
+check(Object.keys(HOLDABLE_TYPES).sort().join() === 'beam,firearm,grapple,melee,projectile,sign,tool', 'the game registers seven holdable types');
 
 const game = new Weapons({ cfg: CONFIG, camera, mainScene: scene, envMap: null, world, enemies, player, fx, hud, audio });
 const kinds = Object.fromEntries(game.slots.map((item) => [item.id, item.constructor.name]));

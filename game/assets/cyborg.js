@@ -4,6 +4,7 @@ import { surfaceMaterial } from '../../core/client/graphics/surfaces.js';
 import { MuzzleFlash } from '../../core/client/graphics/particles.js';
 import { buildHeldModel } from '../weapons/index.js';
 import { clamp, lerp, damp, easeInOut } from '../../core/client/engine/math.js';
+import { swingPose } from '../../core/client/combat/swing-poses.js';
 
 /*
  * The third-person character: a green-and-black cybernetic robot (black plating,
@@ -22,6 +23,7 @@ const SHOULDER_X = 0.37;
 const SHOULDER_Y = 1.32;
 const GUN_SCALE = 1.25;
 const LEAN_BODY_ANGLE = 0.45; // radians the torso tips at a full lean
+const SWING_TORSO_SHARE = 0.75; // how much of the item's swing rotation the rig takes (the jab used 0.35 / 0.7 of its own)
 const LEAN_BODY_SHIFT = 0.3; // metres the torso slides sideways at a full lean
 
 // Where each hand grips a gun, in the gun model's own space (matches the first-person arms).
@@ -33,6 +35,7 @@ const GRIPS = {
   drill: { right: [0.045, -0.15, 0.1], left: [-0.04, -0.15, -0.18] },
   reel: { right: [0.052, -0.09, 0.05], left: [-0.052, -0.11, 0.04] },
   shovel: { right: [0.04, -0.03, 0.2], left: [0, -0.03, -0.18] },
+  stopsign: { right: [0, 0, 0], left: [0, 0.16, -0.08] },
   raygun: { right: [0.052, -0.11, 0.085], left: [0, -0.085, -0.1] },
 };
 
@@ -361,10 +364,10 @@ export class Cyborg {
       let rigX = pitch * this.aimW - 0.4 * (1 - this.aimW) + kick.r * 0.7 - 0.9 * weapons.switchAmount;
       let rigY = clamp(shortest(player.yaw - this.bodyYaw), -0.9, 0.9) * this.aimW;
       let rigZ = 0.3 * this.reloadBlend * (gun.id === 'shotgun' ? 1 : 0.4);
-      if (weapons.swingT >= 0) { // quick melee jab
-        const s = Math.sin(Math.PI * weapons.swingT);
-        rigX += 0.35 * s;
-        rigY += 0.5 * s;
+      if (weapons.swingT >= 0) { // a whole-item swing: the torso follows the item's rise and fall
+        const swing = swingPose(weapons.swingStyle, weapons.swingT);
+        rigX += swing.rx * SWING_TORSO_SHARE;
+        rigY += swing.ry * SWING_TORSO_SHARE;
       }
       this.rig.rotation.set(rigX, rigY, rigZ);
       this.rig.position.z = kick.z * 1.2;

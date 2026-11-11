@@ -29,9 +29,9 @@ for (const file of files) {
   ids.push(weapon.config.id);
 }
 check(new Set(ids).size === ids.length, 'weapon ids are unique');
-check(WEAPON_LIST.map((entry) => entry.id).join() === 'fists,pistol,shotgun,smg,raygun,sniper,shovel,reel,drill', 'the list keeps its order: gloves first, the nail gun second');
+check(WEAPON_LIST.map((entry) => entry.id).join() === 'fists,pistol,shotgun,smg,raygun,sniper,shovel,reel,drill,stopsign', 'the list keeps its order: gloves first, the nail gun second');
 check(WEAPON_LIST.every((entry) => HOLDABLE_TYPES[entry.type] && HOLDABLE_MODELS[entry.id]), 'every entry has a class and a model');
-check(Object.keys(HOLDABLE_TYPES).sort().join() === 'beam,firearm,grapple,melee,projectile,tool', 'the types the weapons use');
+check(Object.keys(HOLDABLE_TYPES).sort().join() === 'beam,firearm,grapple,melee,projectile,sign,tool', 'the types the weapons use');
 for (const file of files) {
   const source = fs.readFileSync(path.join(folder, file), 'utf8');
   check(!/from '\.\/(?!shared\.js)/.test(source), `${file} imports no other weapon (only shared.js)`);
