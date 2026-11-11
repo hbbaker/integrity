@@ -310,11 +310,19 @@ export class World {
 
   /** An invisible solid for something that has its own mesh (a hydrant, a pole). */
   addCollider(cx, cz, width, height, depth) {
-    this.solids.push({
+    const solid = {
       minX: cx - width / 2, maxX: cx + width / 2,
       minZ: cz - depth / 2, maxZ: cz + depth / 2,
       height, ramp: null,
-    });
+    };
+    this.solids.push(solid);
+    return solid;
+  }
+
+  /** Take away a solid that addCollider returned (it does nothing if the level was rebuilt since). */
+  removeCollider(solid) {
+    const index = this.solids.indexOf(solid);
+    if (index >= 0) this.solids.splice(index, 1);
   }
 
   _addRamp(scene, minX, maxX, minZ, maxZ, height, climbs, mat) {

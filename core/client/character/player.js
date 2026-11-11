@@ -12,6 +12,7 @@ const MANTLE_FINISH_DIP = 2.5; // camera dip when the climb ends
 const PULL_BODY_HEIGHT = 0.9; // metres above the feet: the body centre a grapple steers
 const PULL_EXIT_SPEED_KEEP = 0.45; // share of the pull speed kept when it ends
 const PULL_BLOCKED_SECONDS = 0.3; // a pull that pushes into a wall this long gives up
+const PINNED_BLOCKED_SECONDS = 0.04; // an impaled player stops as soon as they hit something
 const HALF_DEGREES_TO_RADIANS = Math.PI / 360; // fov is in degrees; the maths needs half the angle in radians
 const CLIMB_MIN_DEPTH = 0.05; // metres below the surface before a blocked push counts as climbing a hole wall
 const LEAN_STEPS = [1, 0.5]; // full lean, then half a lean, before giving up
@@ -210,9 +211,10 @@ export class Player {
    * until the body is within `arrive` metres, the time runs out, the player jumps, or a wall blocks the way
    * for a moment. `target` is a point { x, y, z } or a function returning one (null cancels), so the
    * target can be someone who moves. The point is where the body centre should end up.
+   * `pinned: true` is a pull you cannot escape by jumping (impaled on something), and it ends the moment you hit a wall.
    */
-  pullToward(target, { speed, arrive = 1.5, seconds = 3 }) {
-    this.pull = { target, speed, arrive, time: seconds, blocked: 0 };
+  pullToward(target, { speed, arrive = 1.5, seconds = 3, pinned = false }) {
+    this.pull = { target, speed, arrive, time: seconds, blocked: 0, pinned };
     this.slamming = false;
     this.sliding = false;
   }
@@ -229,7 +231,7 @@ export class Player {
   _applyPull(input, dt) {
     const pull = this.pull;
     if (!pull) return false;
-    if (input.jumpPressed) { // jumping lets go and keeps the momentum
+    if (input.jumpPressed && !pull.pinned) { // jumping lets go and keeps the momentum
       this.pull = null;
       return false;
     }
@@ -254,7 +256,7 @@ export class Player {
   _pullBlocked(dt) {
     if (!this.pull) return;
     this.pull.blocked += dt;
-    if (this.pull.blocked > PULL_BLOCKED_SECONDS) this.pull = null;
+    if (this.pull.blocked > (this.pull.pinned ? PINNED_BLOCKED_SECONDS : PULL_BLOCKED_SECONDS)) this.pull = null;
   }
 
   /** Weapons call this: firing while sprinting drops you out of the sprint. */
@@ -498,10 +500,10 @@ export class Player {
   /**
    * Q / E lean: shift the eye (and the shots) sideways to peek round corners. The lean stops
    * where the eye would end up inside something solid, so you cannot peek through a wall.
-   * Sprinting and sliding straighten you up.
+   * Sprinting straightens you up; you can lean while sliding.
    */
   _updateLean(input, dt) {
-    const side = this.sprinting || this.sliding ? 0 : (input.leanRight ? 1 : 0) - (input.leanLeft ? 1 : 0);
+    const side = this.sprinting ? 0 : (input.leanRight ? 1 : 0) - (input.leanLeft ? 1 : 0);
     this.lean = damp(this.lean, side * this._clearLean(side), this.cfg.leanSpeed, dt);
   }
 

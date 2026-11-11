@@ -13,7 +13,7 @@ const CAPTURE_TIMEOUT_MS = 6000; // a pad cannot press "cancel" while it is bein
 const TABS = [
   { id: 'keyboard', label: 'KEYBOARD & MOUSE' },
   { id: 'gamepad', label: 'GAMEPAD' },
-  { id: 'sensitivity', label: 'SENSITIVITY' },
+  { id: 'sensitivity', label: 'SENSITIVITY & VIEW' },
 ];
 const EMPTY_SLOT = '—';
 

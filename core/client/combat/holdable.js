@@ -44,6 +44,9 @@ export class Holdable {
   /** Keep the item full (sandbox cheat); optional. */
   refill() {}
 
+  /** Keep only the spare ammo full, not the magazine (sandbox: infinite reserve); optional. */
+  refillReserve() {}
+
   // The hooks below do nothing by default. Subclasses override them with the parameters named in each comment.
 
   /** onAttach(holder): the system was built; create any world-space visuals the item needs. */
@@ -60,8 +63,14 @@ export class Holdable {
 
   /* ---------------------------- per-step hooks ---------------------------- */
 
-  /** tick(holder, dt): every fixed step, even while switching. */
+  /** tick(holder, dt): every fixed step while this item is the one in hand, even while switching. */
   tick() {}
+
+  /** backgroundTick(holder, dt): every fixed step for EVERY item, in hand or not. For things the item launched (a projectile in flight). */
+  backgroundTick() {}
+
+  /** onPeerMessage(holder, from, message): a message another player's copy of this item sent with holder.sendItemMessage. */
+  onPeerMessage() {}
 
   /** fixedUpdate(holder, dt, input): every fixed step while in hand and not switching. Read the input here: fire, reload, aim. */
   fixedUpdate() {}

@@ -23,6 +23,8 @@ const MAX_HIT_DAMAGE = 400; // one sniper crit is 240; reject anything absurd
 const MAX_PULL_SPEED = 40; // m/s: a grapple message asking for more is clamped
 const MAX_PULL_SECONDS = 6;
 const PULL_ARRIVE_DISTANCE = 1.8; // a grappled player stops this close to whoever hooked them
+const CARRY_TARGET_DISTANCE = 50; // metres ahead: a carried player is steered at a point this far along the drill's path
+const CARRY_BODY_HEIGHT = 0.9; // the player's body centre above their feet (matches the pull's own height)
 const PULL_TARGET_HEIGHT = 0.9; // metres above the hooker's feet: where the victim is pulled to
 const AMMO_SHARE = 0.6; // of the crates the spawner makes, this share is ammo and the rest health
 const PICKUP_ID_STRIDE = 1e6; // pickup ids are playerId * stride + counter, so they never clash
@@ -76,9 +78,13 @@ export class Deathmatch {
       e: ends.map((end) => [round2(end[0]), round2(end[1]), round2(end[2])]),
     });
     this.weapons.onMelee = (fists) => this._send({ t: 'ml', fists: fists ? 1 : 0 });
+    this.weapons.onItemMessage = (message) => this._send(message);
     this.remotes.onDamage = (target, amount) => this._send({ t: 'h', to: target.id, d: round2(amount) });
     this.remotes.onPull = (target, options) => this._send(options
-      ? { t: 'pl', to: target.id, v: round2(options.speed), s: round2(options.seconds) }
+      ? {
+        t: 'pl', to: target.id, v: round2(options.speed), s: round2(options.seconds),
+        ...(options.direction ? { d: [round2(options.direction.x), round2(options.direction.y), round2(options.direction.z)] } : {}),
+      }
       : { t: 'pl', to: target.id, c: 1 });
     this.pickups.clear();
     this.pickups.onCollected = (item) => this._send({ t: 'pc', id: item.netId });
@@ -91,6 +97,7 @@ export class Deathmatch {
     this.active = false;
     this.weapons.onShot = null;
     this.weapons.onMelee = null;
+    this.weapons.onItemMessage = null;
     this.remotes.onDamage = null;
     this.remotes.onPull = null;
     this.pickups.onCollected = null;
@@ -165,6 +172,7 @@ export class Deathmatch {
         this.pickups.removeById(message.id);
         break;
       default:
+        this.weapons.onPeerMessage(from, message); // items may use their own message types (a launched drill)
         break;
     }
   }
@@ -281,10 +289,27 @@ export class Deathmatch {
     const speed = Math.min(Math.max(Number(message.v) || 0, 0), MAX_PULL_SPEED);
     const seconds = Math.min(Math.max(Number(message.s) || 0, 0), MAX_PULL_SECONDS);
     if (!speed || !seconds) return;
+    if (Array.isArray(message.d)) {
+      this._takeCarry(message.d, speed, seconds);
+      return;
+    }
     const hooker = this.remotes.byId.get(from);
     this.player.pullToward(
       () => (hooker?.alive ? { x: hooker.pos.x, y: hooker.pos.y + PULL_TARGET_HEIGHT, z: hooker.pos.z } : null),
       { speed, arrive: PULL_ARRIVE_DISTANCE, seconds },
+    );
+  }
+
+  /** Impaled on a drill head: carried along its path at its speed until time runs out or something solid is hit. */
+  _takeCarry(direction, speed, seconds) {
+    const [dx, dy, dz] = direction.map((value) => Number(value) || 0);
+    const length = Math.hypot(dx, dy, dz);
+    if (!length) return;
+    const { player } = this;
+    const reach = CARRY_TARGET_DISTANCE / length;
+    player.pullToward(
+      () => ({ x: player.pos.x + dx * reach, y: player.pos.y + CARRY_BODY_HEIGHT + dy * reach, z: player.pos.z + dz * reach }),
+      { speed, arrive: 0, seconds, pinned: true },
     );
   }
 

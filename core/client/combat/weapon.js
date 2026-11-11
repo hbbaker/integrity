@@ -61,6 +61,19 @@ export class Weapon extends Holdable {
     this.reserve = this.cfg.maxReserve || this.reserve;
   }
 
+  /** Spare ammo of every type is always full; the rounds in the weapon still run out. */
+  refillReserve() {
+    if (this.base.melee) return;
+    if (this.typeCfgs) {
+      for (const [key, cfg] of Object.entries(this.typeCfgs)) {
+        if (key === this.type) this.reserve = cfg.maxReserve;
+        else this.stash[key] = cfg.maxReserve;
+      }
+    } else if (this.cfg.maxReserve) {
+      this.reserve = this.cfg.maxReserve;
+    }
+  }
+
   get loadingRoundByRound() {
     return this.reloading && Boolean(this.cfg.perShell);
   }

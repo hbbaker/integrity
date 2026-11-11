@@ -248,6 +248,6 @@ export const CONFIG = {
     collectRadius: 1.3,
     lifetime: 18,
     healthAmount: 25,
-    ammo: { pistol: 24, shotgun: 8, slug: 3, smg: 60, raygun: 40, sniper: 5 }, // keys match weapons (shotgun = buckshot) and ammoTypes[].pickupKey
+    ammo: { pistol: 24, shotgun: 8, slug: 3, smg: 60, raygun: 40, sniper: 5, drill: 1 }, // keys match weapons (shotgun = buckshot) and ammoTypes[].pickupKey
   },
 };

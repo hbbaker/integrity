@@ -86,7 +86,7 @@ globalThis.document = { exitPointerLock() { hudLog.push(['exitPointerLock']); } 
 check(waves.onPlayerDeath() === true && hudLog.some(([k, wave, kills]) => k === 'showDeath' && wave === 2 && kills === 4), 'waves: death shows the end screen with the wave and kills');
 
 const sandbox = new SandboxMode({ config: CONFIG.sandbox });
-check(sandbox.setup.level === 'sandbox' && sandbox.setup.invulnerable && sandbox.setup.infiniteAmmo && sandbox.setup.spawn.z === CONFIG.sandbox.half - 30, 'sandbox: open level, invulnerable, infinite ammo');
+check(sandbox.setup.level === 'sandbox' && sandbox.setup.invulnerable && sandbox.setup.infiniteReserve && !sandbox.setup.infiniteAmmo && sandbox.setup.spawn.z === CONFIG.sandbox.half - 30, 'sandbox: open level, invulnerable, infinite reserve (not infinite magazine)');
 
 const botLog = [];
 const botMode = new BotMatchMode({ botMatch: { start: () => botLog.push('start'), stop: () => botLog.push('stop'), update: () => botLog.push('update'), onPlayerDeath: () => botLog.push('death'), onBotKilled: () => botLog.push('kill') } });

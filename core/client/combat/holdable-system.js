@@ -29,6 +29,16 @@ import { meleeStrike } from './melee.js';
 
 const NO_FORGIVENESS = Object.freeze({ boost: 0, extra: 0 });
 
+const LIMB_UP = new THREE.Vector3(0, 1, 0);
+const LIMB_SCRATCH = new THREE.Vector3();
+
+/** The wrist groups of a model (see HoldableSystem._reachShoulders). */
+function collectLimbs(root) {
+  const limbs = [];
+  root.traverse((object) => { if (object.userData.limb) limbs.push(object); });
+  return limbs;
+}
+
 export class HoldableSystem {
   constructor({ config, types, models, camera, mainScene, envMap, world, enemies, player, fx, hud, audio }) {
     this.cfg = config;
@@ -82,8 +92,10 @@ export class HoldableSystem {
     // Multiplayer hooks, set by the game (null in single player):
     this.onShot = null; // (itemIndex, fromVector, endPointsArray) after each trigger pull of a ray weapon
     this.onMelee = null; // (usesFists) after each melee swing
+    this.onItemMessage = null; // (message) an item wants other players' copies of it to hear something (a launched projectile)
     this.fireLocked = false; // a mode that uses the trigger for something else (digging) sets this
-    this.infiniteAmmo = false;
+    this.infiniteAmmo = false; // every item stays completely full
+    this.infiniteReserve = false; // spare ammo never runs out, but magazines still empty and need a reload
     this._shotEnds = []; // end points of this trigger pull's rays, reused
 
     // Scratch values reused every shot (no per-shot garbage).
@@ -195,6 +207,16 @@ export class HoldableSystem {
     this.switchTimer = this.cfg.switchTime / 2;
   }
 
+  /** An item tells the other players about something it did. A no-op in single player. */
+  sendItemMessage(message) {
+    if (this.onItemMessage) this.onItemMessage(message);
+  }
+
+  /** A relayed message from another player: every item gets to read it. */
+  onPeerMessage(from, message) {
+    for (const item of this.slots) item.onPeerMessage(this, from, message);
+  }
+
   /** Muzzle flash on the viewmodel, and on the third-person model's item when it is visible. */
   flashFire(size, intensity) {
     this.flash.fire(size, intensity);
@@ -240,6 +262,7 @@ export class HoldableSystem {
 
   update(dt, input) {
     if (this.infiniteAmmo) this._refillAll();
+    if (this.infiniteReserve) for (const item of this.slots) item.refillReserve();
     this.cooldown = Math.max(0, this.cooldown - dt);
     this.meleeCooldown -= dt;
     this.triggerBuffer = Math.max(0, this.triggerBuffer - dt);
@@ -265,6 +288,7 @@ export class HoldableSystem {
     if (input.aimHeld && canAim && this.player.sprinting) this.player.cancelSprint();
     this.aiming = input.aimHeld && canAim && !this.reloading && !this.player.sprinting;
 
+    for (const other of this.slots) other.backgroundTick(this, dt);
     item.tick(this, dt);
 
     if (!this.switching) {
@@ -474,11 +498,34 @@ export class HoldableSystem {
     this.anchor.rotation.set(pose.rx, pose.ry, pose.rz);
 
     item.afterPose(this, model, dt, time);
+    this._reachShoulders(model);
 
     this.flash.update(dt);
     if (this.worldLightTime > 0) {
       this.worldLightTime -= dt;
       if (this.worldLightTime <= 0) this.worldLight.intensity = 0;
+    }
+  }
+
+  /**
+   * Limbs: any part of a model with `userData.limb = { sleeve, band, shoulder: [x, y, z], bandDistance }` (the group at the
+   * wrist) is stretched from the wrist to the shoulder point (in view space) every frame. The arm therefore never ends
+   * in mid-air, whatever pose the item is in.
+   */
+  _reachShoulders(model) {
+    model.limbs ??= collectLimbs(model.root);
+    if (model.limbs.length === 0) return;
+    this.anchor.updateMatrixWorld(true);
+    for (const wrist of model.limbs) {
+      const { sleeve, band, shoulder, bandDistance } = wrist.userData.limb;
+      const target = wrist.worldToLocal(LIMB_SCRATCH.set(shoulder[0], shoulder[1], shoulder[2]));
+      const length = Math.max(0.05, target.length());
+      target.divideScalar(length);
+      sleeve.scale.y = length;
+      sleeve.quaternion.setFromUnitVectors(LIMB_UP, target);
+      sleeve.position.copy(target).multiplyScalar(length / 2);
+      band.quaternion.copy(sleeve.quaternion);
+      band.position.copy(target).multiplyScalar(Math.min(bandDistance, length));
     }
   }
 

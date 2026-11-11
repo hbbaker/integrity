@@ -36,6 +36,8 @@ export const MODULE_PATHS = {
   effects: 'core/client/graphics/particles.js',
   weapons: 'game/weapons/index.js',
   'fiber-reel': 'game/weapons/fiber-reel.js',
+  'boring-launcher': 'game/weapons/boring-launcher.js',
+  'drill-heads': 'game/entities/drill-heads.js',
   'grapple-weapon': 'core/client/combat/grapple-weapon.js',
   'holdable-models': 'game/weapons/index.js',
   'holdable-system': 'core/client/combat/holdable-system.js',

@@ -12,7 +12,7 @@
  */
 
 import { HoldableSystem } from '../../core/client/combat/holdable-system.js';
-import { setArmsEnabled } from './shared.js';
+import { setArmsEnabled, tickSharedGlow } from './shared.js';
 import { weapon as workGloves } from './work-gloves.js';
 import { weapon as nailGun } from './nail-gun.js';
 import { weapon as rivetBlaster } from './rivet-blaster.js';
@@ -21,9 +21,10 @@ import { weapon as arcTorch } from './arc-torch.js';
 import { weapon as transitRifle } from './transit-rifle.js';
 import { weapon as shovel } from './shovel.js';
 import { weapon as fiberReel } from './fiber-reel.js';
+import { weapon as boringLauncher } from './boring-launcher.js';
 
 /** In list order: the position here is the item's index everywhere (loadout slots, the wheel, the inventory). */
-export const WEAPONS = [workGloves, nailGun, rivetBlaster, framingNailer, arcTorch, transitRifle, shovel, fiberReel];
+export const WEAPONS = [workGloves, nailGun, rivetBlaster, framingNailer, arcTorch, transitRifle, shovel, fiberReel, boringLauncher];
 
 /** CONFIG.weapons.list. */
 export const WEAPON_LIST = WEAPONS.map((entry) => entry.config);
@@ -37,7 +38,23 @@ export const HOLDABLE_TYPES = Object.fromEntries(WEAPONS.map((entry) => [entry.h
  *   held: false   the third-person character holds nothing for this item (the gloves)
  *   beamColor     for beam weapons: (power, outColor) -> colour
  */
-export const HOLDABLE_MODELS = Object.fromEntries(WEAPONS.map((entry) => [entry.config.id, entry.model]));
+export const HOLDABLE_MODELS = Object.fromEntries(WEAPONS.map((entry) => [entry.config.id, withSharedGlow(entry.model)]));
+
+/** The same model definition, but every model it builds also moves the shared glow (sleeve rings, circuit traces) along the RGB cycle. */
+function withSharedGlow(model) {
+  return {
+    ...model,
+    build() {
+      const built = model.build();
+      const animate = built.animate;
+      built.animate = (dt, time, state) => {
+        tickSharedGlow(time);
+        animate(dt, time, state);
+      };
+      return built;
+    },
+  };
+}
 
 /** An item model with no first-person hands or sleeves, for the third-person character to hold. Null when it holds nothing. */
 export function buildHeldModel(id) {

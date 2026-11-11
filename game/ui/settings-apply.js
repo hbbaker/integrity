@@ -8,6 +8,7 @@ export function createSettingsApplier(config, settings) {
   const baseMouse = config.player.mouseSensitivity;
 
   return function apply() {
+    config.player.fov = settings.get('fov');
     config.player.mouseSensitivity = baseMouse * settings.get('mouseSensitivity');
     config.player.adsSensitivity = settings.get('adsSensitivity');
     config.gamepad.lookSpeed = settings.get('padLookSpeed');

@@ -1,17 +1,16 @@
 /*
- * ARC TORCH: a continuous beam of arc light, in an organic alien casing: everything is a lathe, tube, torus, sphere
- * or capsule: a teardrop body, a flared emitter horn with three curved prongs around a glowing orb, glowing coil
+ * ARC TORCH: a continuous beam of arc light, in a sculpted brushed-aluminium casing: everything is a lathe, tube,
+ * torus, sphere or capsule: a teardrop body, a flared emitter horn with three curved prongs around a glowing orb, glowing coil
  * rings, a glowing vein spiralling along the body, a glass energy chamber whose level shows the charge, and a swept
  * grip with tail fins.
  *
- * Barrels point down -Z. The glow colour follows the beam's power: green at full power, fading to amber as the
- * timed falloff eats into it.
+ * Barrels point down -Z. The glow colour follows the beam's power (green at full power, fading to amber as the
+ * timed falloff eats into it): it is the one weapon whose light is information, so it does not cycle through RGB.
  */
 
 import * as THREE from 'three';
-import { material } from '../../core/client/graphics/materials.js';
 import { BeamWeapon } from '../../core/client/combat/beam-weapon.js';
-import { makeArm } from './shared.js';
+import { MAT, makeArm } from './shared.js';
 
 /** The numbers: damage, speed, ammo, recoil, sights. */
 export const config = {
@@ -81,11 +80,8 @@ const damp = (current, target, rate, dt) => current + (target - current) * (1 - 
 export function buildArcTorch() {
   const root = new THREE.Group();
 
-  const bodyMat = new THREE.MeshPhysicalMaterial({
-    color: 0x2b2f4a, metalness: 0.85, roughness: 0.28,
-    clearcoat: 1, clearcoatRoughness: 0.15, iridescence: 0.8, iridescenceIOR: 1.6,
-  });
-  const darkMat = material(0x14161f, { metalness: 0.7, roughness: 0.4 });
+  const bodyMat = MAT.alloy; // brushed aluminium casing
+  const darkMat = MAT.gunmetal;
   const glassMat = new THREE.MeshPhysicalMaterial({
     color: 0xaaffe0, transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0, clearcoat: 1,
   });

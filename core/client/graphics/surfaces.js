@@ -13,6 +13,9 @@
  *   circuit   a printed circuit: raised traces and chips that glow in several colours
  *   weave     carbon-fibre / technical fabric
  *   rubber    a stippled rubber grip
+ *   parkerized  a matte phosphate-coated gun finish: fine speckle, faint machining marks, worn edges
+ *   knurl     a diamond-cut grip pattern
+ *   ribbed    parallel grooves across the part, like a pump forend
  */
 
 import * as THREE from 'three';
@@ -20,6 +23,7 @@ import * as THREE from 'three';
 const DEFAULT_GLOW_COLORS = ['#00f0ff', '#ff2bd6', '#3dff9a', '#8a4dff']; // fibre-optic cyan, magenta, lime, violet
 const GRAIN_STREAKS = 340;
 const STIPPLE_DOTS = 1100;
+const SPECKLES = 2600;
 const cache = new Map();
 
 /** A small deterministic random generator, seeded from text. */
@@ -231,7 +235,59 @@ function drawRubber(layers, rand) {
   }
 }
 
-const PATTERNS = { brushed: drawBrushed, plate: drawPlate, circuit: drawCircuit, weave: drawWeave, rubber: drawRubber };
+function drawParkerized(layers, rand) {
+  const { size } = layers;
+  for (let i = 0; i < SPECKLES; i++) { // the fine pitted grain of the coating
+    const x = rand() * size;
+    const y = rand() * size;
+    const light = rand() > 0.5;
+    rect(layers.height, x, y, 1.5, 1.5, grey(light ? 185 : 75), 0.8);
+    rect(layers.colour, x, y, 1.5, 1.5, light ? '#fff' : '#000', light ? 0.07 : 0.16);
+  }
+  for (let i = 0; i < 26; i++) { // faint tool marks where the part was machined
+    const y = rand() * size;
+    const x = rand() * size;
+    const length = 40 + rand() * 120;
+    line(layers.height, x, y, x + length, y + (rand() - 0.5) * 3, grey(150), 1, 0.4);
+    line(layers.colour, x, y, x + length, y, '#fff', 1, 0.05);
+  }
+  for (let i = 0; i < 14; i++) { // bright wear where the coating has rubbed through
+    const x = rand() * size;
+    const y = rand() * size;
+    line(layers.colour, x, y, x + 6 + rand() * 18, y + (rand() - 0.5) * 6, '#d8dde2', 1, 0.28);
+    line(layers.height, x, y, x + 8, y, grey(100), 1, 0.4);
+  }
+}
+
+function drawKnurl(layers) {
+  const { size } = layers;
+  const pitch = 12;
+  for (let offset = -size; offset <= size * 2; offset += pitch) { // two sets of diagonal grooves make the diamonds
+    line(layers.height, offset, 0, offset + size, size, grey(25), 3);
+    line(layers.height, offset, size, offset + size, 0, grey(25), 3);
+    line(layers.colour, offset, 0, offset + size, size, '#000', 2, 0.4);
+    line(layers.colour, offset, size, offset + size, 0, '#000', 2, 0.4);
+  }
+  for (let y = pitch / 2; y < size; y += pitch) { // a highlight on every diamond's peak
+    for (let x = pitch / 2; x < size; x += pitch) dot(layers.height, x, y, 1.6, grey(250), 0.7);
+  }
+}
+
+function drawRibbed(layers) {
+  const { size } = layers;
+  const pitch = 20;
+  for (let x = 0; x < size; x += pitch) {
+    rect(layers.height, x, 0, pitch * 0.35, size, grey(20)); // the groove
+    rect(layers.height, x + pitch * 0.35, 0, pitch * 0.65, size, grey(215)); // the ridge
+    rect(layers.colour, x, 0, pitch * 0.35, size, '#000', 0.5);
+    rect(layers.colour, x + pitch * 0.55, 0, 2, size, '#fff', 0.08);
+  }
+}
+
+const PATTERNS = {
+  brushed: drawBrushed, plate: drawPlate, circuit: drawCircuit, weave: drawWeave, rubber: drawRubber,
+  parkerized: drawParkerized, knurl: drawKnurl, ribbed: drawRibbed,
+};
 
 /* ------------------------------- textures -------------------------------- */
 

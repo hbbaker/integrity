@@ -185,7 +185,7 @@ assert(weapons.loadout.join() === '3,4,1', 'swap: pistol moved to slot 3, smg to
 weapons.selectLoadout(1); step(40); assert(weapons.current.cfg.id === 'raygun', 'key 2 equips the raygun from slot 2');
 weapons.selectLoadout(3); step(40); assert(weapons.current.cfg.id === 'fists', 'key 4 equips fists');
 input.wheel = 1; step(1); step(40); assert(weapons.current.cfg.id === 'smg', 'wheel from fists wraps to slot 1');
-const info = weapons.armory(); assert(info.length === 6 && info.filter((d) => d.id !== 'reel').every((d) => d.dps > 0) && info.some((d) => d.id === 'reel'), 'armory lists 5 guns and the reel with stats: ' + info.map((d) => `${d.id}:${d.dps.toFixed(0)}dps`).join(' '));
+const info = weapons.armory(); assert(info.length === 7 && info.filter((d) => d.id !== 'reel').every((d) => d.dps > 0) && info.some((d) => d.id === 'reel') && info.some((d) => d.id === 'drill'), 'armory lists 5 guns, the reel and the boring launcher with stats: ' + info.map((d) => `${d.id}:${d.dps.toFixed(0)}dps`).join(' '));
 assert(weapons.activeSlot() === 0 && globalThis.loadoutHud[1] === 0, 'active slot tracked and pushed to the HUD');
 resetWorld(); enemies.clear();
 // 7. waves / swarm
@@ -398,4 +398,18 @@ input.analogActive = false;
 player.reset(); player.pos.set(-12, 0, 20); input.forward = 1; step(60);
 assert(Math.abs(Math.hypot(player.vel.x, player.vel.z) - CONFIG.player.walkSpeed) < 0.05, 'the keyboard still walks at full speed');
 input.forward = 0;
+// --- sandbox: infinite reserve, but an empty magazine still needs a reload ---
+weapons.reset(); weapons.select(1); step(40);
+weapons.infiniteReserve = true;
+const pistolItem = weapons.current;
+pistolItem.mag = 1; pistolItem.reserve = 0;
+step(2);
+assert(pistolItem.reserve === pistolItem.cfg.maxReserve && pistolItem.mag === 1, 'infinite reserve: the spare ammo refills, the magazine does not');
+input.firePressed = 1; step(1); input.firePressed = 0; step(30);
+assert(pistolItem.mag === 0 && pistolItem.reserve === pistolItem.cfg.maxReserve, 'infinite reserve: firing still empties the magazine');
+input.reloadPressed = 1; step(1); input.reloadPressed = 0; step(90);
+assert(pistolItem.mag === pistolItem.cfg.mag && pistolItem.reserve === pistolItem.cfg.maxReserve, 'infinite reserve: a reload fills the magazine and the reserve stays full');
+weapons.infiniteReserve = false;
+weapons.reset();
+
 console.log('done');

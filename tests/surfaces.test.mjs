@@ -7,13 +7,13 @@ const { surfaceTextures, surfaceMaterial, cssColor } = await load('surfaces');
 let fails = 0;
 const check = (ok, msg) => { console.log(`${ok ? 'ok  ' : 'FAIL'}: ${msg}`); if (!ok) fails++; };
 
-for (const kind of ['brushed', 'plate', 'circuit', 'weave', 'rubber']) {
+for (const kind of ['brushed', 'plate', 'circuit', 'weave', 'rubber', 'parkerized', 'knurl', 'ribbed']) {
   const textures = surfaceTextures(kind, { color: '#336699' });
   check(textures.map instanceof THREE.Texture && textures.bump instanceof THREE.Texture, `${kind}: draws a colour map and a height map`);
   check(textures.map.colorSpace === THREE.SRGBColorSpace && textures.bump.colorSpace !== THREE.SRGBColorSpace, `${kind}: colour is sRGB, the height map is raw data`);
   check(textures.map.wrapS === THREE.RepeatWrapping, `${kind}: the textures tile`);
 }
-check(surfaceTextures('brushed').emissive === null && surfaceTextures('weave').emissive === null && surfaceTextures('rubber').emissive === null, 'plain surfaces have no glow map');
+check(surfaceTextures('brushed').emissive === null && surfaceTextures('weave').emissive === null && surfaceTextures('rubber').emissive === null && surfaceTextures('parkerized').emissive === null && surfaceTextures('knurl').emissive === null && surfaceTextures('ribbed').emissive === null, 'plain surfaces have no glow map');
 check(surfaceTextures('plate').emissive && surfaceTextures('circuit').emissive, 'plating and circuits glow');
 check(surfaceTextures('plate', { color: '#aa2200' }) === surfaceTextures('plate', { color: '#aa2200' }), 'the same surface is drawn once and shared');
 check(surfaceTextures('plate', { color: '#aa2200' }) !== surfaceTextures('plate', { color: '#00aa22' }), 'a different colour is a different surface');

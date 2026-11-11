@@ -339,12 +339,12 @@ export class RemotePlayers {
   }
 
   /** Nearest remote player along a ray (head / torso / legs spheres). Same shape as Enemies.raycast. */
-  raycast(origin, dir, maxT, radius = 0, boost = 0) {
+  raycast(origin, dir, maxT, radius = 0, boost = 0, skip = null) {
     let bestT = maxT;
     let best = null;
     let bestCrit = false;
     for (const remote of this.list) {
-      if (!this._isTarget(remote)) continue;
+      if (!this._isTarget(remote) || (skip && skip.has(remote))) continue;
       const { x, y, z } = remote.pos;
       const view = remote.view.player;
       const slide = view.sliding ? SLIDE_DROP : 0;

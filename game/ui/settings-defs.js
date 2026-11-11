@@ -4,9 +4,11 @@
  * settings-apply.js turns the values into CONFIG changes.
  */
 
-export const SETTING_GROUPS = ['MOUSE', 'GAMEPAD'];
+export const SETTING_GROUPS = ['VIEW', 'MOUSE', 'GAMEPAD'];
 
 export const SETTING_DEFS = [
+  { id: 'fov', label: 'FIELD OF VIEW', group: 'VIEW', type: 'range', min: 60, max: 110, step: 1, default: 75 },
+
   { id: 'mouseSensitivity', label: 'MOUSE SENSITIVITY', group: 'MOUSE', type: 'range', min: 0.2, max: 3, step: 0.05, default: 1 },
   { id: 'adsSensitivity', label: 'AIM-DOWN-SIGHTS SENSITIVITY', group: 'MOUSE', type: 'range', min: 0.2, max: 1.5, step: 0.05, default: 0.9 },
   { id: 'invertMouseY', label: 'INVERT MOUSE Y', group: 'MOUSE', type: 'toggle', default: false },

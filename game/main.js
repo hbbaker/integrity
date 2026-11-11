@@ -148,7 +148,7 @@ const stats = { kills: 0 }; // bots the player has killed this run
 
 /** What a mode's `setup` may leave out. */
 const DEFAULT_SETUP = {
-  level: 'waves', fog: DEFAULT_FOG, spawn: { x: 0, z: 22 }, invulnerable: false, infiniteAmmo: false,
+  level: 'waves', fog: DEFAULT_FOG, spawn: { x: 0, z: 22 }, invulnerable: false, infiniteAmmo: false, infiniteReserve: false,
 };
 
 /** The work every mode shares before it starts: build its level, reset the player and weapons, clear the field. */
@@ -167,6 +167,7 @@ function prepareMode(mode) {
   player.invulnerable = setup.invulnerable;
   weapons.reset();
   weapons.infiniteAmmo = setup.infiniteAmmo;
+  weapons.infiniteReserve = setup.infiniteReserve;
   enemies.clear();
   pickups.clear();
   hud.clearNumbers();
@@ -185,6 +186,7 @@ function cleanupMode(mode, reason) {
   hud.hideDeath();
   player.invulnerable = false;
   weapons.infiniteAmmo = false;
+  weapons.infiniteReserve = false;
   hud.showStart(true, false);
 }
 

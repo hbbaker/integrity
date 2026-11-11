@@ -19,7 +19,7 @@ const player = new Player(camera, world, CONFIG.player);
 let slams = 0;
 player.onSlam = () => { slams += 1; };
 
-const input = { forward: 0, back: 0, left: 0, right: 0, sprintHeld: 0, jumpPressed: 0, slidePressed: 0, sprintPressed: 0, crouchHeld: 0, analogActive: false };
+const input = { forward: 0, back: 0, left: 0, right: 0, sprintHeld: 0, jumpPressed: 0, slidePressed: 0, sprintPressed: 0, crouchHeld: 0, leanLeft: 0, leanRight: 0, analogActive: false };
 const dt = 1 / 60;
 const run = (steps, each) => { for (let i = 0; i < steps; i++) { player.update(dt, input); input.jumpPressed = 0; input.slidePressed = 0; input.sprintPressed = 0; each?.(); } };
 const start = () => {
@@ -70,6 +70,11 @@ start(); input.crouchHeld = 1; input.slidePressed = 1; run(5);
 check(slams === 0 && player.crouching, 'crouching on the ground is not a slam');
 start(); input.forward = 1; input.sprintHeld = 1; run(30); input.crouchHeld = 1; input.slidePressed = 1; run(1);
 check(slams === 0 && player.sliding, 'sprint then crouch on the ground still slides');
+input.leanRight = 1; run(25);
+check(player.sliding && player.lean > 0.3, `you can lean to the right in the middle of a slide (lean ${player.lean.toFixed(2)})`);
+input.leanRight = 0; input.leanLeft = 1; run(25);
+check(player.lean < -0.3, 'and to the left');
+input.leanLeft = 0;
 
 start(); input.forward = 1; run(15); jump(); run(5);
 input.crouchHeld = 1; input.slidePressed = 1; run(1); const first = slams;

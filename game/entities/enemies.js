@@ -469,6 +469,8 @@ export class Enemies {
   _spawnAt(key, x, z, speedMul) {
     const e = this._acquire(key);
     e.hp = e.def.hp;
+    e.pin = null;
+    e.pull = null;
     e.speed = e.def.speed * speedMul;
     e.pos.set(x, this.world.groundHeight(x, z), z);
     e.prevPos.copy(e.pos);
@@ -509,6 +511,10 @@ export class Enemies {
   _step(e, dt, target) {
     const cfg = this.cfg;
     e.prevPos.copy(e.pos);
+    if (e.pin) {
+      this._stepPin(e, dt);
+      return;
+    }
     if (e.pull) {
       this._stepPull(e, dt);
       return;
@@ -715,9 +721,45 @@ export class Enemies {
     e.dodgeT = 0;
   }
 
-  /** Let go of a dragged bot. */
+  /** Let go of a dragged or impaled bot. */
   release(e) {
     e.pull = null;
+    if (e.pin) this._endPin(e);
+  }
+
+  /**
+   * Skewer a bot on something that moves (a drill head). `options`: { point() -> { x, y, z } or null, seconds }.
+   * The bot hangs from that point (its body centre sits on it) and cannot act until time runs out or `release`.
+   */
+  pinTo(e, { point, seconds }) {
+    e.pin = { point, time: seconds };
+    e.pull = null;
+    e.windup = 0;
+    e.state = 'advance';
+    e.dodgeT = 0;
+    e.vel.set(0, 0, 0);
+  }
+
+  _stepPin(e, dt) {
+    const pin = e.pin;
+    const point = pin.point();
+    pin.time -= dt;
+    if (!point || pin.time <= 0) {
+      this._endPin(e);
+      return;
+    }
+    const centre = (1.15 - 0.42 * e.crouch) * e.def.scale;
+    e.pos.set(point.x, Math.max(point.y - centre, this.world.groundHeight(point.x, point.z)), point.z);
+    e.vy = 0;
+    e.vel.set(0, 0, 0);
+    e.knock.set(0, 0, 0);
+  }
+
+  _endPin(e) {
+    e.pin = null;
+    e.stun = Math.max(e.stun, PULL_END_STUN);
+    e.vy = 0;
+    e.grounded = false;
   }
 
   _stepPull(e, dt) {
@@ -932,12 +974,13 @@ export class Enemies {
    * is a crit. `radius` fattens every volume (shotgun pellets are not infinitely thin).
    * Fills and returns this.hit, or returns null.
    */
-  raycast(origin, dir, maxT, radius = 0, boost = 0) {
+  raycast(origin, dir, maxT, radius = 0, boost = 0, skip = null) {
     let bestT = maxT;
     let best = null;
     let bestCrit = false;
     for (let i = 0; i < this.alive.length; i++) {
       const e = this.alive[i];
+      if (skip && skip.has(e)) continue;
       const s = e.def.scale;
       const c = e.crouch;
       const px = e.pos.x;

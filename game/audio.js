@@ -37,9 +37,23 @@ export class AudioFX extends AudioEngine {
         this._noise(0.05, 'bandpass', 3200, 900, 0.7);
         this._tone('square', 320, 90, 0.06, 0.22);
         break;
+      case 'drill':
+        this._noise(0.5, 'lowpass', 1800, 120, 1.3);
+        this._tone('sawtooth', 140, 40, 0.5, 0.55);
+        this._tone('square', 70, 180, 0.35, 0.3, 0.05); // the motor spooling up
+        break;
       default:
         break;
     }
+  }
+
+  /** A drill head biting into a surface: a hard thud, a grinding rasp and a ring. Quieter with `distance` metres. */
+  drillImpact(distance = 0) {
+    this.playAt(distance, DISTANT_SOUND_RANGE, () => {
+      this._tone('sine', 110, 40, 0.3, 0.7);
+      this._noise(0.4, 'bandpass', 700, 250, 0.9);
+      this._tone('square', 900, 300, 0.25, 0.2, 0.04);
+    });
   }
 
   /** A gunshot heard from `distance` metres away: quieter the further it is. */

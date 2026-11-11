@@ -1,10 +1,12 @@
 /*
- * RIVET BLASTER: The shotgun: rivets (many pellets) or anchor bolts (one slug). TAB swaps them; a pump slides after each shot.
+ * RIVET BLASTER: the shotgun: rivets (many pellets) or anchor bolts (one slug). TAB swaps them; a pump slides after each shot.
+ * Shaped like a pump-action shotgun: a long barrel over a magazine tube, a ribbed pump forend, a receiver with an
+ * ejection port, and a raked stock with a recoil pad. Neutral metal and graphite; the only colour is the RGB glow.
  */
 
 import * as THREE from 'three';
-import { box, at, bevelBox, lathePart, glowMaterial, makeGauge } from '../../core/client/combat/viewmodel-parts.js';
-import { MAT, makeArm, glowRing, makeHeat } from './shared.js';
+import { box, at, bevelBox, lathePart, glowMaterial, makeGauge, sideProfile, tubePart } from '../../core/client/combat/viewmodel-parts.js';
+import { MAT, makeArm, glowRing, makeHeat, rgbColor, rgbGlows } from './shared.js';
 import { Firearm } from '../../core/client/combat/firearm.js';
 
 /** The numbers: damage, speed, ammo, recoil, sights. */
@@ -35,33 +37,46 @@ export const config = {
   },
 };
 
+// Side outlines in [z, y] (forward is -z).
+const RECEIVER = [[-0.06, 0.05], [0.2, 0.05], [0.235, 0.04], [0.242, -0.03], [0.2, -0.046], [0.0, -0.046], [-0.06, -0.04]];
+const STOCK = [[0.235, 0.046], [0.4, 0.04], [0.57, 0.024], [0.6, 0.018], [0.612, -0.1], [0.585, -0.112], [0.45, -0.06], [0.34, -0.07], [0.29, -0.095], [0.24, -0.098], [0.215, -0.085], [0.215, 0.0]];
+const RECOIL_PAD = [[0.6, 0.018], [0.618, 0.018], [0.63, -0.102], [0.613, -0.106]];
+const PUMP = [[-0.1, 0.014], [0.1, 0.014], [0.106, -0.012], [0.09, -0.036], [-0.085, -0.041], [-0.106, -0.02]];
+
 function buildShotgun() {
   const root = new THREE.Group();
-  const pump = at(bevelBox(0.075, 0.06, 0.2, MAT.orange, 0.01), 0, -0.045, -0.25);
+  const pump = at(sideProfile(PUMP, 0.064, MAT.ribbed, 0.008), 0, -0.045, -0.25);
   const leftArm = at(makeArm(-1, Math.PI, [-0.3, -0.35, 1]), 0, -0.055, 0); // palm up, wrapped under the pump
   pump.add(leftArm);
-  for (let i = 0; i < 4; i++) pump.add(at(bevelBox(0.079, 0.064, 0.009, MAT.rubber, 0.002), 0, 0, -0.07 + i * 0.047)); // grip bands
-  const rightArm = at(makeArm(1, -Math.PI / 2, [0.3, -0.45, 1]), 0.05, -0.09, 0.22);
-  const barrel = at(lathePart([[0.022, 0], [0.022, 0.72], [0.026, 0.72], [0.026, 0.745], [0.019, 0.745]], MAT.metal), 0, 0.02, 0.07);
-  const tube = at(lathePart([[0.018, 0], [0.018, 0.5], [0.022, 0.5], [0.022, 0.515], [0.014, 0.515]], MAT.steel), 0, -0.025, 0.07);
-  const shroud = at(lathePart([[0.026, 0], [0.026, 0.12], [0.03, 0.12], [0.03, 0.135]], MAT.steel), 0, 0.02, -0.44);
-  const heat = glowRing(0.0305, 0xff7a1a, -0.575, 0.02, 0.008);
-  const lamp = glowMaterial(0x2a8bff, 1.6);
-  const gauge = makeGauge(6, { pitch: 0.032, size: [0.004, 0.014, 0.022] });
-  gauge.group.position.set(-0.0385, 0.012, 0.22);
+  const rightArm = at(makeArm(1, -Math.PI / 2, [0.3, -0.45, 1]), 0.05, -0.09, 0.25);
+  const barrel = at(lathePart([[0.021, 0], [0.021, 0.72], [0.024, 0.72], [0.024, 0.745], [0.018, 0.745]], MAT.gunmetal), 0, 0.02, 0.07);
+  const rib = at(box(0.007, 0.004, 0.62, MAT.steel), 0, 0.0445, -0.35); // ventilated rib: the sight plane, below the bead
+  const tube = at(lathePart([[0.017, 0], [0.017, 0.5], [0.021, 0.5], [0.021, 0.515], [0.014, 0.515]], MAT.steel), 0, -0.025, 0.07);
+  const shroud = at(lathePart([[0.025, 0], [0.025, 0.12], [0.029, 0.12], [0.029, 0.135]], MAT.alloy), 0, 0.02, -0.44);
+  const heat = glowRing(0.0295, -0.575, 0.02, 0.008);
+  const lamp = glowMaterial(0xffffff, 1.6);
+  const stripe = glowMaterial(0xffffff, 1.4);
+  const gauge = makeGauge(6, { pitch: 0.032, size: [0.004, 0.014, 0.022], color: (time) => rgbColor(0.5, time) });
+  gauge.group.position.set(-0.0305, 0.0, 0.2);
+  const glows = rgbGlows([[heat.material, 0], [lamp, 0.3], [stripe, 0.6]]);
+  const guard = tubePart([[0, -0.046, 0.1], [0, -0.082, 0.11], [0, -0.09, 0.15], [0, -0.082, 0.19], [0, -0.046, 0.2]], 0.0045, MAT.gunmetal);
   root.add(
     barrel,
+    rib,
     tube, // magazine tube
-    at(bevelBox(0.075, 0.095, 0.3, MAT.hazard, 0.012), 0, 0, 0.1), // yellow housing
+    at(sideProfile(RECEIVER, 0.056, MAT.gunmetal, 0.01), 0, 0, 0),
+    at(box(0.0016, 0.026, 0.07, MAT.rubber), 0.0288, 0.02, 0.09), // ejection port
+    at(box(0.0014, 0.004, 0.16, stripe), 0.0289, -0.012, 0.09), // glow inlay under the port
     pump,
-    at(bevelBox(0.055, 0.12, 0.06, MAT.rubber, 0.012), 0, -0.085, 0.21), // pistol grip
-    at(bevelBox(0.06, 0.11, 0.3, MAT.hazard, 0.014), 0, -0.03, 0.4), // stock
-    at(bevelBox(0.062, 0.01, 0.1, MAT.rubber, 0.003), 0, 0.054, 0.1), // hazard stripe
+    at(sideProfile(STOCK, 0.05, MAT.polymer, 0.01), 0, 0, 0),
+    at(sideProfile(RECOIL_PAD, 0.052, MAT.rubber, 0.004), 0, 0, 0),
+    guard,
+    at(bevelBox(0.008, 0.026, 0.01, MAT.steel, 0.003), 0, -0.068, 0.15), // trigger
     shroud,
     heat.ring,
-    at(box(0.01, 0.015, 0.01, MAT.brass), 0, 0.045, -0.66), // bead sight
-    at(bevelBox(0.03, 0.05, 0.05, MAT.hose, 0.008), 0.055, 0.0, 0.2), // air fitting on the side
-    at(new THREE.Mesh(new THREE.SphereGeometry(0.008, 10, 8), lamp), 0.0795, 0.0, 0.2), // its status lamp
+    at(new THREE.Mesh(new THREE.SphereGeometry(0.0065, 10, 8), lamp), 0, 0.0505, -0.66), // bead sight, a glowing bead
+    at(new THREE.Mesh(new THREE.SphereGeometry(0.0065, 10, 8), MAT.steel), 0, 0.0465, -0.66),
+    at(new THREE.Mesh(new THREE.SphereGeometry(0.008, 10, 8), lamp), 0.0295, -0.012, 0.24), // status lamp on the receiver
     gauge.group,
     rightArm,
   );
@@ -72,6 +87,7 @@ function buildShotgun() {
     root, muzzle, home: { x: 0.2, y: -0.2, z: -0.4 },
     parts: { pump, pumpBaseZ: pump.position.z, support: { object: leftArm, baseY: leftArm.position.y } },
     animate(dt, time, state) {
+      glows(time);
       gauge.update(state.ammo, time);
       const hot = cool(dt, state.pulse);
       heat.material.emissiveIntensity = 0.4 + hot * 7;

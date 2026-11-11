@@ -135,7 +135,7 @@ const spy = new Targets({
   remotes: { list: [{}], raycast: (...args) => { seen.push(['player', ...args.slice(3)]); return null; } },
 });
 spy.raycast(origin, forward, 50, 0.1, 0.8);
-check(JSON.stringify(seen) === JSON.stringify([['bot', 0.1, 0.8], ['player', 0.1, 0.8]]), 'the target list passes the boost to both bots and remote players');
+check(JSON.stringify(seen) === JSON.stringify([['bot', 0.1, 0.8, null], ['player', 0.1, 0.8, null]]), 'the target list passes the boost to both bots and remote players');
 
 console.log(fails ? `${fails} FAILED` : 'ALL OK');
 process.exit(fails ? 1 : 0);
