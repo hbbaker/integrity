@@ -23,6 +23,11 @@ export class AudioFX extends AudioEngine {
         this._noise(0.09, 'lowpass', 3500, 600, 0.9);
         this._tone('square', 420, 70, 0.11, 0.35);
         break;
+      case 'revolver':
+        this._noise(0.3, 'lowpass', 3000, 180, 1.3);
+        this._tone('sawtooth', 200, 40, 0.26, 0.5);
+        this._noise(0.04, 'highpass', 4500, 3000, 0.7); // the crack
+        break;
       case 'shotgun':
         this._noise(0.32, 'lowpass', 2200, 200, 1.2);
         this._tone('sawtooth', 160, 35, 0.3, 0.5);

@@ -26,7 +26,19 @@ fn main() {
         .iter()
         .map(|folder| (*folder).to_owned())
         .collect();
+    config
+        .json_routes
+        .push((DEV_FLAG_PATH.to_owned(), dev_flag_json()));
     run(DigServer::new(dig_server::match_seconds()), config);
+}
+
+/// The page asks for this to learn whether the server was started in developer mode.
+const DEV_FLAG_PATH: &str = "/dev-flag.json";
+
+/// `{"dev":true}` when the CABLE_DEV env var is "1", otherwise `{"dev":false}`.
+fn dev_flag_json() -> String {
+    let enabled = env::var("CABLE_DEV").is_ok_and(|value| value == "1");
+    format!("{{\"dev\":{enabled}}}")
 }
 
 /// The game folder: GAME_DIR if set, otherwise the repository root (two levels above this crate).

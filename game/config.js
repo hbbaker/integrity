@@ -8,8 +8,7 @@ export const CONFIG = {
   fixedStep: 1 / 60, // gameplay tick rate; rendering is interpolated between ticks
   maxFrameDelta: 0.1, // clamp so a tab switch cannot cause a giant catch-up
   maxStepsPerFrame: 5,
-  maxPixelRatio: 2,
-  exposure: 0.95, // tone-mapping exposure: raise for a brighter, lower for a moodier look
+  internalHeight: 480, // render height in pixels (original Xbox: 480p); the canvas is scaled up to the window
   fogColor: 0xbfcbd4,
 
   arena: { half: 30, wallHeight: 2.5 }, // 60 x 60
@@ -134,9 +133,30 @@ export const CONFIG = {
     ambushRange: 4.5, // hiding bots charge out if you get this close
     rushTime: 1.5,
     rushMul: 1.35,
+    // The pistol a bot carries (a type with `gun: {...}` of its own overrides any of these; a type without `gun` is melee only).
+    // It raises the gun for `aimTime` seconds first (your warning), then fires bursts at you with `spread` radians of aim error.
+    gun: {
+      damage: 6, // per hit
+      interval: 0.4, // seconds between shots in a burst
+      burst: [2, 4], // shots in a burst
+      burstPause: [0.9, 1.6], // seconds between bursts when shooting from the open
+      aimTime: 0.55,
+      spread: 0.05,
+      range: 28, // metres: it only shoots at you inside this
+      minRange: 3, // closer than this it uses its fists instead
+      holdDistance: [8, 14], // metres: it stops closing in and shoots from about here
+      strafeSpeed: 0.45, // how fast (as a share of its speed) it sidesteps while shooting from the open
+      coverSeekRate: 0.45, // chance per second, while it has a line on you, of running for cover instead
+      peekTime: [1.4, 2.4], // seconds it stands up from behind cover
+      peeks: [3, 5], // times it pops up before it moves to other cover
+      duckChance: 0.75, // chance it ducks when you aim at it as it peeks (and it always ducks when hit)
+      tracerColor: 0xffd24d,
+      muzzleHeight: 1.28, // metres above its feet (times its scale) when standing
+    },
     // color = hi-vis vest, head = cable-box head, hat = hard hat colour. scale 1 = a 1.7 m tall bot.
     // Extra looks (all optional): extraEar, stripes (reflective bands), spool (cable reel backpack),
-    // jackhammer (big drill in the hands), cone (traffic cone for a hat), visor (welding mask).
+    // jackhammer (big drill in the hands), cone (traffic cone for a hat), visor (welding mask), gun (carries a pistol).
+    // Routers and jackhammers have no `gun`: they close in and use their fists.
     // ai: cover = chance (scaled by how hurt) to run for cover when hit; dodge = chance to sidestep when
     // aimed at; hop = chance a dodge includes a jump; leap = leaps per second when 3.5-7 m away.
     types: {
@@ -145,23 +165,23 @@ export const CONFIG = {
         ai: { cover: 0.15, dodge: 0.85, dodgeCooldown: 1.0, hop: 0.4, leap: 0.3 },
       },
       cable: {
-        hp: 70, glow: 0x8a4dff, speed: 3.6, scale: 1, damage: 10, hat: 0xff7a00, color: 0x6a2fd6, head: 0x1a1b1f, mass: 1, stunMul: 1,
+        hp: 70, glow: 0x8a4dff, speed: 3.6, scale: 1, damage: 10, hat: 0xff7a00, color: 0x6a2fd6, head: 0x1a1b1f, mass: 1, stunMul: 1, gun: {},
         ai: { cover: 0.5, dodge: 0.5, dodgeCooldown: 1.8, hop: 0.25, leap: 0 },
       },
       technician: {
-        hp: 260, glow: 0xffb800, speed: 2.2, scale: 1.2, damage: 22, color: 0xff7a00, head: 0x2a2b30, mass: 3, stunMul: 0.35, hat: 0xe8b800, stripes: true,
+        hp: 260, glow: 0xffb800, speed: 2.2, scale: 1.2, damage: 22, color: 0xff7a00, head: 0x2a2b30, mass: 3, stunMul: 0.35, hat: 0xe8b800, stripes: true, gun: { damage: 9, interval: 0.7, burst: [1, 2], coverSeekRate: 0.15 }, // a slow heavy: stands its ground
         ai: { cover: 0.1, dodge: 0.1, dodgeCooldown: 3, hop: 0, leap: 0 },
       },
       lineman: { // pole climber: quick on its feet, hops a lot, carries a cable reel
-        hp: 45, glow: 0x3dff9a, speed: 4.8, scale: 0.95, damage: 8, color: 0xffd400, head: 0x1a1b1f, hat: 0xffffff, mass: 0.9, stunMul: 1, spool: true, stripes: true,
+        hp: 45, glow: 0x3dff9a, speed: 4.8, scale: 0.95, damage: 8, color: 0xffd400, head: 0x1a1b1f, hat: 0xffffff, mass: 0.9, stunMul: 1, spool: true, stripes: true, gun: { interval: 0.33, spread: 0.07 },
         ai: { cover: 0.2, dodge: 0.7, dodgeCooldown: 1.2, hop: 0.6, leap: 0.15 },
       },
       splicer: { // glass-fibre splicer: fragile and fast, wears a welding visor
-        hp: 22, glow: 0xff2bd6, speed: 7, scale: 0.8, damage: 5, color: 0x1ec6d6, head: 0x20242a, hat: 0x1ec6d6, mass: 0.7, stunMul: 1.2, visor: true,
+        hp: 22, glow: 0xff2bd6, speed: 7, scale: 0.8, damage: 5, color: 0x1ec6d6, head: 0x20242a, hat: 0x1ec6d6, mass: 0.7, stunMul: 1.2, visor: true, gun: { damage: 4, spread: 0.08, strafeSpeed: 0.8 }, // fragile and fidgety
         ai: { cover: 0.1, dodge: 0.9, dodgeCooldown: 0.8, hop: 0.5, leap: 0.4 },
       },
       foreman: { // tough and cautious: ducks behind cover often
-        hp: 150, glow: 0xff7a1a, speed: 3, scale: 1.1, damage: 16, color: 0xff7a00, head: 0x2a2b30, hat: 0xffffff, mass: 1.8, stunMul: 0.6, stripes: true, extraEar: true,
+        hp: 150, glow: 0xff7a1a, speed: 3, scale: 1.1, damage: 16, color: 0xff7a00, head: 0x2a2b30, hat: 0xffffff, mass: 1.8, stunMul: 0.6, stripes: true, extraEar: true, gun: { damage: 8, coverSeekRate: 0.9, peeks: [4, 6] }, // the cautious one: lives behind cover
         ai: { cover: 0.8, dodge: 0.3, dodgeCooldown: 2.2, hop: 0.1, leap: 0 },
       },
       jackhammer: { // slow heavy hitter with a drill
@@ -169,7 +189,7 @@ export const CONFIG = {
         ai: { cover: 0.05, dodge: 0.05, dodgeCooldown: 4, hop: 0, leap: 0 },
       },
       coneHead: { // cheap fodder wearing a traffic cone
-        hp: 36, glow: 0x00f0ff, speed: 4.2, scale: 0.9, damage: 7, color: 0xff7a00, head: 0x1a1b1f, mass: 0.9, stunMul: 1, cone: true,
+        hp: 36, glow: 0x00f0ff, speed: 4.2, scale: 0.9, damage: 7, color: 0xff7a00, head: 0x1a1b1f, mass: 0.9, stunMul: 1, cone: true, gun: { damage: 5, spread: 0.07 },
         ai: { cover: 0.3, dodge: 0.5, dodgeCooldown: 1.5, hop: 0.3, leap: 0 },
       },
     },
@@ -248,6 +268,35 @@ export const CONFIG = {
     collectRadius: 1.3,
     lifetime: 18,
     healthAmount: 25,
-    ammo: { pistol: 24, shotgun: 8, slug: 3, smg: 60, raygun: 40, sniper: 5, drill: 1 }, // keys match weapons (shotgun = buckshot) and ammoTypes[].pickupKey
+    ammo: { pistol: 24, shotgun: 8, slug: 3, smg: 60, raygun: 40, sniper: 5, drill: 1, revolver: 12 }, // keys match weapons (shotgun = buckshot) and ammoTypes[].pickupKey
+  },
+
+  // The mech suit: a power-armour frame much bigger than the human who steps into it from behind.
+  suit: {
+    scale: 1.7, // body size against the human; the hit cylinder and the eye scale with it
+    interactRadius: 4.6, // how close the player must be to step in
+    // The numbers every suit starts from. Part stats are added on top (see game/suit/suit-stats.js).
+    baseline: {
+      speedMul: 0.8, // walk, sprint and slide speed
+      jumpDelay: 0.15, // seconds between pressing jump and the legs firing
+      slideDelay: 0.2, // seconds between pressing slide and the slide starting
+      healthMul: 3, // the suit's health, as a multiple of the player's own
+    },
+    // The beacon: thrown to call the suit down, or to send it back up. It flies in an arc, lands, and the suit follows.
+    beacon: {
+      throwSpeed: 15, // m/s along the aim
+      throwLift: 3, // m/s extra upward, so it arcs
+      gravity: 18,
+      maxFlight: 6, // seconds in the air before it is given up on
+      landDelay: 0.8, // seconds it blinks on the ground before the suit comes (or goes)
+      noRoomBanner: 'NO ROOM FOR THE SUIT',
+    },
+    // The suit falling from the sky and rising back into it.
+    sky: { height: 80, dropTime: 1.6, liftTime: 1.4, beamLinger: 0.9, shake: 0.7, shakeRange: 25 },
+    walkBehind: 3.4, // metres behind the suit where the human steps in and out
+    // Seconds each stage of stepping in (and, run backwards, out) takes: the back and limbs open, the human walks in, they close.
+    enterTimes: { open: 1.1, step: 1.7, close: 1.1 },
+    orbit: { dist: 7.5 }, // third-person camera distance while the animation plays
+    collider: { width: 0.8, height: 1.9 }, // the standing suit's solid, times scale
   },
 };

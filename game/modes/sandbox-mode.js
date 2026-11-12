@@ -11,7 +11,7 @@ export class SandboxMode extends GameMode {
   get setup() {
     return {
       level: 'sandbox',
-      fog: { near: 70, far: 230 },
+      fog: { near: 40, far: 160 },
       spawn: { x: 0, z: this.config.half - 30 },
       invulnerable: true,
       infiniteReserve: true, // the spare ammo never runs out, but an empty magazine still needs a reload

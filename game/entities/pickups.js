@@ -38,7 +38,7 @@ function buildAmmoBox() {
   band.position.y = 0.04;
   group.add(band);
   const brass = material(0xb08a2e, { metalness: 0.9, roughness: 0.3 });
-  const bullet = new THREE.CylinderGeometry(0.03, 0.03, 0.14, 8);
+  const bullet = new THREE.CylinderGeometry(0.03, 0.03, 0.14, 6);
   for (const x of [-0.12, 0, 0.12]) {
     const round = new THREE.Mesh(bullet, brass);
     round.position.set(x, 0.23, 0);

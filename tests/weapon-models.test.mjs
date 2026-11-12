@@ -57,7 +57,7 @@ check(Math.abs(hue(first) - hue(later)) > 0.2, 'the RGB glow moves round the spe
 check(Math.abs(hue(rgbColor(0, 0).clone()) - hue(rgbColor(0.5, 0).clone())) > 0.4, 'two glow parts with different phases show different colours');
 check(rgbColor(0.3, 1).getHSL({}).s > 0.9, 'the glow is fully saturated');
 for (const name of ['gunmetal', 'steel', 'alloy', 'polymer', 'grip', 'ribbed', 'rubber']) {
-  check(MAT[name].bumpMap && MAT[name].map && !MAT[name].emissiveMap, `${name}: a neutral material with a colour map and a height map, no glow`);
+  check(MAT[name].map && !MAT[name].bumpMap && !MAT[name].emissiveMap, `${name}: a neutral material with a colour map, no bump map, no glow`);
 }
 check(MAT.trace.emissiveMap, 'the circuit traces glow, tinted by the RGB cycle');
 

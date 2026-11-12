@@ -37,6 +37,9 @@ pub struct ServerConfig {
     /// Paths (relative to `root`) that start with any of these are never served: folders such as the
     /// server's own source (end them in "/"), or files such as "package.json".
     pub blocked_prefixes: Vec<String>,
+    /// Exact request paths (such as "/dev-flag.json") answered with a fixed JSON body. Lets the game
+    /// hand the page values the server read from its environment.
+    pub json_routes: Vec<(String, String)>,
 }
 
 impl ServerConfig {
@@ -46,6 +49,7 @@ impl ServerConfig {
             default_port: 8123,
             tick_interval: Duration::from_millis(50),
             blocked_prefixes: Vec::new(),
+            json_routes: Vec::new(),
         }
     }
 }
@@ -86,6 +90,7 @@ pub fn run<G: GameServer>(game: G, config: ServerConfig) {
     let files = Arc::new(http::FileRules {
         root,
         blocked_prefixes: config.blocked_prefixes,
+        json_routes: config.json_routes,
     });
     for stream in listener.incoming().flatten() {
         let files = Arc::clone(&files);

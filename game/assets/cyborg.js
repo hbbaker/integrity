@@ -1,10 +1,14 @@
 import * as THREE from 'three';
-import { material } from '../../core/client/graphics/materials.js';
+import { material, xboxMaterial } from '../../core/client/graphics/materials.js';
 import { surfaceMaterial } from '../../core/client/graphics/surfaces.js';
 import { MuzzleFlash } from '../../core/client/graphics/particles.js';
 import { buildHeldModel } from '../weapons/index.js';
 import { clamp, lerp, damp, easeInOut } from '../../core/client/engine/math.js';
 import { swingPose } from '../../core/client/combat/swing-poses.js';
+import { BodyRig } from './body-rig.js';
+import { HUMANOID_KIT, HUMANOID_MATERIALS } from './humanoid.js';
+import { clearSuitExtras, dressSuitBody, setSuitPart as fitSuitPart } from './mech-suit.js';
+import { YBotSkin, loadYBot } from './y-bot.js';
 
 /*
  * The third-person character: a green-and-black cybernetic robot (black plating,
@@ -24,22 +28,34 @@ const SHOULDER_Y = 1.32;
 const GUN_SCALE = 1.25;
 const LEAN_BODY_ANGLE = 0.45; // radians the torso tips at a full lean
 const SWING_TORSO_SHARE = 0.75; // how much of the item's swing rotation the rig takes (the jab used 0.35 / 0.7 of its own)
+const SHOULDER_GUN = 'drill'; // the boring launcher rests on the shoulder; every other gun is carried in front of the body
+const CARRY_OFFSET = new THREE.Vector3(-0.04, -0.3, -0.3); // a carried gun's right hand, from the right shoulder, in the body's frame: low, out in front
+const RAISED_ARM = 0.75; // how much of the rig's arm the right hand uses when the gun is raised to aim (less than all bends the elbow)
+const GRIP_REACH = 0.97; // how much of a straight arm the support hand is asked to use
+const MAX_CARRY_PULL = 0.3; // metres a carried gun may be drawn back so the left hand can reach the front grip
+const MAX_SHOULDER_PULL = 0.7; // ... and the launcher, which ends up on the shoulder
+const Y_BOT_GUN_SCALE = 1; // third-person guns are drawn this size on the Y Bot (the cyborg's bigger hands take GUN_SCALE)
+const GUN_GRIP = 0.55; // how far the fingers close round a gun (1 is a fist)
+const FIST_GRIP = 1;
+const GUN_PALM_IN = 1.1; // radians: both palms turn in toward the gun
 const LEAN_BODY_SHIFT = 0.3; // metres the torso slides sideways at a full lean
 
 // Where each hand grips a gun, in the gun model's own space (matches the first-person arms).
 const GRIPS = {
   pistol: { right: [0.052, -0.09, 0.05], left: [-0.052, -0.11, 0.04] },
+  revolver: { right: [0.05, -0.1, 0.14], left: [-0.05, -0.11, 0.13] },
   shotgun: { right: [0.05, -0.09, 0.22], left: [0, -0.1, -0.25] },
   smg: { right: [0.052, -0.1, 0.13], left: [0, -0.07, -0.19] },
   sniper: { right: [0.05, -0.09, 0.22], left: [0, -0.1, -0.25] },
   drill: { right: [0.045, -0.15, 0.1], left: [-0.04, -0.15, -0.18] },
   reel: { right: [0.052, -0.09, 0.05], left: [-0.052, -0.11, 0.04] },
   shovel: { right: [0.04, -0.03, 0.2], left: [0, -0.03, -0.18] },
+  beacon: { right: [0, -0.04, 0], left: [-0.01, -0.06, -0.05] },
   stopsign: { right: [0, 0, 0], left: [0, 0.16, -0.08] },
   raygun: { right: [0.052, -0.11, 0.085], left: [0, -0.085, -0.1] },
 };
 
-const glow = (hex, intensity) => new THREE.MeshStandardMaterial({
+const glow = (hex, intensity) => xboxMaterial({
   color: 0x04120a, emissive: hex, emissiveIntensity: intensity, roughness: 0.4, metalness: 0.2,
 });
 
@@ -117,8 +133,115 @@ function makeLeg(side) {
   return pivot;
 }
 
+/** The original cyborg look: black plating, green panels, hard hat and vest. Fills the pivots on `owner`. */
+function buildCyborgBody(owner) {
+  owner.root = new THREE.Group();
+  owner.root.rotation.order = 'YXZ';
+
+  owner.hips = new THREE.Group();
+  owner.root.add(owner.hips);
+  owner.legL = makeLeg(-1);
+  owner.legR = makeLeg(1);
+  owner.hips.add(
+    owner.legL, owner.legR,
+    mesh(new THREE.BoxGeometry(0.42, 0.2, 0.28), MAT.black, 0, 0.62, 0), // pelvis
+    mesh(new THREE.BoxGeometry(0.44, 0.03, 0.3), MAT.glow, 0, 0.72, 0), // belt light
+    mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.22, 8), MAT.joint, 0, 0.8, 0), // waist
+  );
+
+  owner.torso = new THREE.Group();
+  owner.torso.position.y = 0.9;
+  owner.hips.add(owner.torso);
+  const core = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 8), MAT.glow, 0, 0.32, -0.19); // chest core
+  core.rotation.x = Math.PI / 2; // the disc faces forward
+  owner.torso.add(
+    mesh(new THREE.BoxGeometry(0.54, 0.5, 0.3), MAT.black, 0, 0.27, 0), // chest
+    mesh(new THREE.BoxGeometry(0.42, 0.32, 0.05), MAT.green, 0, 0.3, -0.16), // front armour plate
+    core,
+    mesh(new THREE.BoxGeometry(0.3, 0.08, 0.2), MAT.plate, 0, 0.55, 0), // collar
+    // Hi-vis vest over the chest: front panel, back panel and two reflective bands round the body.
+    mesh(new THREE.BoxGeometry(0.56, 0.3, 0.02), MAT.vest, 0, 0.2, -0.155),
+    mesh(new THREE.BoxGeometry(0.56, 0.3, 0.02), MAT.vest, 0, 0.2, 0.155),
+    mesh(new THREE.BoxGeometry(0.57, 0.04, 0.32), MAT.reflect, 0, 0.14, 0),
+    mesh(new THREE.BoxGeometry(0.57, 0.04, 0.32), MAT.reflect, 0, 0.27, 0),
+  );
+  owner.hips.add(mesh(new THREE.BoxGeometry(0.46, 0.06, 0.3), MAT.leather, 0, 0.66, 0)); // tool belt
+  for (const x of [-0.17, 0.12]) owner.hips.add(mesh(new THREE.BoxGeometry(0.08, 0.1, 0.06), MAT.leather, x, 0.61, -0.16));
+
+  // Back pack with glowing vents; it tilts with movement.
+  owner.pack = new THREE.Group();
+  owner.pack.position.set(0, 0.35, 0.2);
+  owner.pack.add(
+    mesh(new THREE.BoxGeometry(0.34, 0.4, 0.12), MAT.plate, 0, 0, 0.04),
+    mesh(new THREE.BoxGeometry(0.26, 0.03, 0.02), MAT.glow, 0, 0.1, 0.11),
+    mesh(new THREE.BoxGeometry(0.26, 0.03, 0.02), MAT.glow, 0, 0.02, 0.11),
+    mesh(new THREE.BoxGeometry(0.26, 0.03, 0.02), MAT.glow, 0, -0.06, 0.11),
+  );
+  // Cable reel strapped on top of the pack: two flanges and a wound fibre core.
+  for (const x of [-0.08, 0.08]) {
+    owner.pack.add(mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.02, 8), MAT.reflect, x, 0.28, 0.06).rotateZ(Math.PI / 2));
+  }
+  owner.pack.add(mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.12, 8), MAT.cable, 0, 0.28, 0.06).rotateZ(Math.PI / 2));
+  owner.torso.add(owner.pack);
+
+  // Head (pivot at the neck): boxy skull, glowing visor, side sensors and an antenna.
+  owner.head = new THREE.Group();
+  owner.head.position.y = 0.62;
+  owner.torso.add(owner.head);
+  owner.head.add(
+    mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 8), MAT.joint, 0, -0.02, 0), // neck
+    mesh(new THREE.BoxGeometry(0.3, 0.27, 0.3), MAT.black, 0, 0.14, 0), // skull
+    mesh(new THREE.SphereGeometry(0.19, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), MAT.hat, 0, 0.27, 0), // hard hat dome
+    mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.02, 10), MAT.hat, 0, 0.27, -0.03), // brim, longer at the front
+    mesh(new THREE.BoxGeometry(0.04, 0.03, 0.34), MAT.hat, 0, 0.455, 0), // ridge
+    mesh(new THREE.BoxGeometry(0.24, 0.07, 0.02), MAT.glow, 0, 0.16, -0.155), // visor
+    mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05, 8), MAT.joint, -0.17, 0.14, 0).rotateZ(Math.PI / 2), // ears
+    mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05, 8), MAT.joint, 0.17, 0.14, 0).rotateZ(Math.PI / 2),
+    mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.22, 6), MAT.joint, 0.1, 0.4, 0.06), // antenna
+    mesh(new THREE.SphereGeometry(0.02, 8, 6), MAT.glow, 0.1, 0.52, 0.06),
+  );
+
+  // Aim rig: both arms (and the gun) pitch together around the shoulders.
+  owner.rig = new THREE.Group();
+  owner.rig.position.y = 0;
+  owner.rig.rotation.order = 'YXZ';
+  owner.torso.add(owner.rig);
+  owner.rig.position.set(0, SHOULDER_Y - 0.9, 0);
+  owner.armL = makeArm(-1);
+  owner.armR = makeArm(1);
+  for (const arm of [owner.armL, owner.armR]) {
+    arm.pivot.position.y = 0;
+    owner.rig.add(arm.pivot);
+  }
+  for (const side of [-1, 1]) { // shoulder joints with a glowing ring
+    const pad = mesh(new THREE.SphereGeometry(0.11, 8, 6), MAT.joint, side * (SHOULDER_X + 0.02), SHOULDER_Y - 0.9 + 0.04, 0);
+    pad.scale.set(1.15, 1, 1.1);
+    const ring = mesh(new THREE.TorusGeometry(0.115, 0.012, 4, 10), MAT.glow, side * (SHOULDER_X + 0.02), SHOULDER_Y - 0.9 + 0.04, 0);
+    ring.rotation.y = Math.PI / 2;
+    owner.torso.add(pad, ring);
+  }
+}
+
+/** The shared humanoid skeleton (grey human or mech suit). Fills the same pivots on `owner`. */
+function buildRiggedBody(owner) {
+  const body = new BodyRig(HUMANOID_MATERIALS);
+  body.setKit(HUMANOID_KIT, HUMANOID_MATERIALS);
+  owner.body = body;
+  owner.root = body.root;
+  owner.hips = body.hips;
+  owner.torso = body.torso;
+  owner.head = body.head;
+  owner.pack = body.pack;
+  owner.rig = body.rig;
+  owner.legL = body.legL.pivot;
+  owner.legR = body.legR.pivot;
+  owner.armL = body.armL;
+  owner.armR = body.armR;
+}
+
 export class Cyborg {
-  constructor({ scene, player, weapons, flashLight = true }) {
+  /** `rigged` builds the human (the Y Bot, swappable to the suit) instead of the green cyborg. `skinLoader` replaces the model loader (tests). */
+  constructor({ scene, player, weapons, flashLight = true, rigged = false, skinLoader = loadYBot }) {
     this.player = player;
     this.weapons = weapons;
     this.group = new THREE.Group();
@@ -131,92 +254,10 @@ export class Cyborg {
     this.shadow.position.y = 0.02;
     this.group.add(this.shadow);
 
-    this.root = new THREE.Group();
-    this.root.rotation.order = 'YXZ';
+    if (rigged) buildRiggedBody(this);
+    else buildCyborgBody(this);
+    this.skin = rigged ? new YBotSkin(this.body, { load: skinLoader }) : null; // draws the human once the model has loaded
     this.group.add(this.root);
-
-    this.hips = new THREE.Group();
-    this.root.add(this.hips);
-    this.legL = makeLeg(-1);
-    this.legR = makeLeg(1);
-    this.hips.add(
-      this.legL, this.legR,
-      mesh(new THREE.BoxGeometry(0.42, 0.2, 0.28), MAT.black, 0, 0.62, 0), // pelvis
-      mesh(new THREE.BoxGeometry(0.44, 0.03, 0.3), MAT.glow, 0, 0.72, 0), // belt light
-      mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.22, 8), MAT.joint, 0, 0.8, 0), // waist
-    );
-
-    this.torso = new THREE.Group();
-    this.torso.position.y = 0.9;
-    this.hips.add(this.torso);
-    const core = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 12), MAT.glow, 0, 0.32, -0.19); // chest core
-    core.rotation.x = Math.PI / 2; // the disc faces forward
-    this.torso.add(
-      mesh(new THREE.BoxGeometry(0.54, 0.5, 0.3), MAT.black, 0, 0.27, 0), // chest
-      mesh(new THREE.BoxGeometry(0.42, 0.32, 0.05), MAT.green, 0, 0.3, -0.16), // front armour plate
-      core,
-      mesh(new THREE.BoxGeometry(0.3, 0.08, 0.2), MAT.plate, 0, 0.55, 0), // collar
-      // Hi-vis vest over the chest: front panel, back panel and two reflective bands round the body.
-      mesh(new THREE.BoxGeometry(0.56, 0.3, 0.02), MAT.vest, 0, 0.2, -0.155),
-      mesh(new THREE.BoxGeometry(0.56, 0.3, 0.02), MAT.vest, 0, 0.2, 0.155),
-      mesh(new THREE.BoxGeometry(0.57, 0.04, 0.32), MAT.reflect, 0, 0.14, 0),
-      mesh(new THREE.BoxGeometry(0.57, 0.04, 0.32), MAT.reflect, 0, 0.27, 0),
-    );
-    this.hips.add(mesh(new THREE.BoxGeometry(0.46, 0.06, 0.3), MAT.leather, 0, 0.66, 0)); // tool belt
-    for (const x of [-0.17, 0.12]) this.hips.add(mesh(new THREE.BoxGeometry(0.08, 0.1, 0.06), MAT.leather, x, 0.61, -0.16));
-
-    // Back pack with glowing vents; it tilts with movement.
-    this.pack = new THREE.Group();
-    this.pack.position.set(0, 0.35, 0.2);
-    this.pack.add(
-      mesh(new THREE.BoxGeometry(0.34, 0.4, 0.12), MAT.plate, 0, 0, 0.04),
-      mesh(new THREE.BoxGeometry(0.26, 0.03, 0.02), MAT.glow, 0, 0.1, 0.11),
-      mesh(new THREE.BoxGeometry(0.26, 0.03, 0.02), MAT.glow, 0, 0.02, 0.11),
-      mesh(new THREE.BoxGeometry(0.26, 0.03, 0.02), MAT.glow, 0, -0.06, 0.11),
-    );
-    // Cable reel strapped on top of the pack: two flanges and a wound fibre core.
-    for (const x of [-0.08, 0.08]) {
-      this.pack.add(mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.02, 12), MAT.reflect, x, 0.28, 0.06).rotateZ(Math.PI / 2));
-    }
-    this.pack.add(mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.12, 12), MAT.cable, 0, 0.28, 0.06).rotateZ(Math.PI / 2));
-    this.torso.add(this.pack);
-
-    // Head (pivot at the neck): boxy skull, glowing visor, side sensors and an antenna.
-    this.head = new THREE.Group();
-    this.head.position.y = 0.62;
-    this.torso.add(this.head);
-    this.head.add(
-      mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 8), MAT.joint, 0, -0.02, 0), // neck
-      mesh(new THREE.BoxGeometry(0.3, 0.27, 0.3), MAT.black, 0, 0.14, 0), // skull
-      mesh(new THREE.SphereGeometry(0.19, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), MAT.hat, 0, 0.27, 0), // hard hat dome
-      mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.02, 14), MAT.hat, 0, 0.27, -0.03), // brim, longer at the front
-      mesh(new THREE.BoxGeometry(0.04, 0.03, 0.34), MAT.hat, 0, 0.455, 0), // ridge
-      mesh(new THREE.BoxGeometry(0.24, 0.07, 0.02), MAT.glow, 0, 0.16, -0.155), // visor
-      mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05, 8), MAT.joint, -0.17, 0.14, 0).rotateZ(Math.PI / 2), // ears
-      mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05, 8), MAT.joint, 0.17, 0.14, 0).rotateZ(Math.PI / 2),
-      mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.22, 6), MAT.joint, 0.1, 0.4, 0.06), // antenna
-      mesh(new THREE.SphereGeometry(0.02, 8, 6), MAT.glow, 0.1, 0.52, 0.06),
-    );
-
-    // Aim rig: both arms (and the gun) pitch together around the shoulders.
-    this.rig = new THREE.Group();
-    this.rig.position.y = 0;
-    this.rig.rotation.order = 'YXZ';
-    this.torso.add(this.rig);
-    this.rig.position.set(0, SHOULDER_Y - 0.9, 0);
-    this.armL = makeArm(-1);
-    this.armR = makeArm(1);
-    for (const arm of [this.armL, this.armR]) {
-      arm.pivot.position.y = 0;
-      this.rig.add(arm.pivot);
-    }
-    for (const side of [-1, 1]) { // shoulder joints with a glowing ring
-      const pad = mesh(new THREE.SphereGeometry(0.11, 10, 8), MAT.joint, side * (SHOULDER_X + 0.02), SHOULDER_Y - 0.9 + 0.04, 0);
-      pad.scale.set(1.15, 1, 1.1);
-      const ring = mesh(new THREE.TorusGeometry(0.115, 0.012, 6, 14), MAT.glow, side * (SHOULDER_X + 0.02), SHOULDER_Y - 0.9 + 0.04, 0);
-      ring.rotation.y = Math.PI / 2;
-      this.torso.add(pad, ring);
-    }
 
     // Gun in the right hand: one copy per weapon, only the equipped one shown.
     this.socket = new THREE.Group();
@@ -226,7 +267,7 @@ export class Cyborg {
       if (!model) return null;
       const grip = GRIPS[cfg.id];
       const holder = new THREE.Group();
-      holder.scale.setScalar(GUN_SCALE);
+      holder.scale.setScalar(rigged ? Y_BOT_GUN_SCALE : GUN_SCALE);
       model.root.position.set(-grip.right[0], -grip.right[1], -grip.right[2]); // wrist at the socket
       model.root.visible = true;
       holder.add(model.root);
@@ -243,10 +284,16 @@ export class Cyborg {
 
     this._v = new THREE.Vector3();
     this._w = new THREE.Vector3();
+    this._a = new THREE.Vector3();
+    this._b = new THREE.Vector3();
+    this._c = new THREE.Vector3();
+    this._d = new THREE.Vector3();
+    this._q = new THREE.Quaternion();
     this.reset();
   }
 
   reset() {
+    this.suppressed = false; // true while something else (the suit's climb-in) draws the body
     this.bodyYaw = this.player.yaw;
     this.phase = 0;
     this.fireT = 0;
@@ -255,6 +302,22 @@ export class Cyborg {
     this.stride = 0;
     this.heldIndex = -2;
     this.aimW = 0;
+  }
+
+  /** Rigged bodies only: wear the suit parts in `selection` at `scale`, or pass null to go back to the grey human. */
+  setSuit(selection, scale = 1) {
+    if (selection) dressSuitBody(this.body, selection);
+    else {
+      clearSuitExtras(this.body);
+      this.body.setKit(HUMANOID_KIT, HUMANOID_MATERIALS);
+    }
+    this.skin?.setActive(!selection);
+    this.group.scale.setScalar(selection ? scale : 1);
+  }
+
+  /** Rigged bodies only: swap one suit slot while the suit is worn. */
+  setSuitPart(slot, id) {
+    fitSuitPart(this.body, slot, id);
   }
 
   /** World position of the current gun's muzzle (call after update() this frame). */
@@ -287,8 +350,8 @@ export class Cyborg {
     const player = this.player;
     const weapons = this.weapons;
     const show = player.thirdPersonVisible;
-    this.group.visible = show;
-    if (!show) return;
+    this.group.visible = show && !this.suppressed;
+    if (!show || this.suppressed) return;
 
     // --- Placement ---
     this.group.position.set(
@@ -427,5 +490,56 @@ export class Cyborg {
 
     this.flash.update(dt);
     this.group.updateMatrixWorld(true);
+    if (this.skin) this._poseSkin({ phase: this.phase, run, stride: this.stride, grounded, sliding: player.sliding, crouching: player.crouching, sprinting: player.sprinting, falling: player.vel.y < 0 }, gun);
+  }
+
+  /**
+   * Pose the human model: its own gait from the player's motion, then, with a gun up, both hands on the gun.
+   * The gun is moved into the model's right hand and the left hand reaches the support grip with the elbow out,
+   * so the arms never cross. Most guns are carried in front of the body with the right elbow bent; the launcher
+   * rests on the shoulder (see `_rightHandTarget`). With nothing in hand the hands are fists.
+   */
+  _poseSkin(motion, gun) {
+    const skin = this.skin;
+    skin.sync(motion);
+    skin.setGrip(gun ? GUN_GRIP : FIST_GRIP);
+    if (!gun || !skin.ready || !skin.active) return;
+    skin.reach('Right', this._rightHandTarget(gun), { roll: GUN_PALM_IN });
+    skin.wristWorld('Right', this._w);
+    this.socket.position.copy(this.armR.hand.worldToLocal(this._w)); // the gun's wrist on the model's wrist
+    this.group.updateMatrixWorld(true);
+    skin.reach('Left', gun.leftGrip.getWorldPosition(this._v), { roll: GUN_PALM_IN });
+    this.group.updateMatrixWorld(true);
+  }
+
+  /**
+   * Where the right hand goes. A gun carried in front rests low and out in front of the body (the right elbow bent) and
+   * comes up to the rig's raised arm as you aim; the launcher takes the rig's hand as it is. Then the gun is drawn back
+   * along its own barrel line just far enough for the left hand to reach the front grip (a little for a carried gun,
+   * a lot for the shouldered launcher).
+   */
+  _rightHandTarget(gun) {
+    const skin = this.skin;
+    const shouldered = gun.id === SHOULDER_GUN;
+    const rigHand = this.armR.hand.getWorldPosition(this._v);
+    const grip = this._w.copy(gun.leftGrip.getWorldPosition(this._w));
+    const axis = this._a.copy(grip).sub(rigHand);
+    const span = axis.length();
+    const target = this._d.copy(rigHand);
+    if (!shouldered) {
+      const shoulder = skin.shoulderWorld('Right', this._c);
+      const raised = target.sub(this.armR.pivot.getWorldPosition(this._b)).multiplyScalar(RAISED_ARM); // as the rig aims, a little shorter
+      const lowered = this._b.copy(CARRY_OFFSET).applyQuaternion(this.root.getWorldQuaternion(this._q)); // low and in front, in the body's frame
+      target.lerpVectors(lowered, raised, this.aimW).add(shoulder);
+    }
+    if (span < 1e-4) return target;
+    axis.divideScalar(span);
+    const toGrip = this._c.copy(grip).add(target).sub(rigHand).sub(skin.shoulderWorld('Left', this._b)); // the grip moves with the hand
+    const reach = skin.armReach('Left') * GRIP_REACH;
+    if (toGrip.length() <= reach) return target;
+    const along = toGrip.dot(axis);
+    const slack = along * along - toGrip.lengthSq() + reach * reach;
+    const pullBack = THREE.MathUtils.clamp(slack >= 0 ? along - Math.sqrt(slack) : along, 0, shouldered ? MAX_SHOULDER_PULL : MAX_CARRY_PULL);
+    return target.addScaledVector(axis, -pullBack);
   }
 }

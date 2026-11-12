@@ -142,7 +142,7 @@ export class World {
     cam.right = cam.top = this.half + 10;
     cam.far = 120 * k + 40;
     cam.updateProjectionMatrix();
-    const size = this.half > 40 ? 4096 : 2048;
+    const size = this.half > 40 ? 2048 : 1024;
     if (sun.shadow.mapSize.x !== size) {
       sun.shadow.mapSize.set(size, size);
       if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
@@ -152,13 +152,13 @@ export class World {
   /* ----------------------------- construction ----------------------------- */
 
   _buildLights(scene) {
-    scene.add(new THREE.HemisphereLight(0xcfe0f0, 0x6a6a60, 0.35)); // the environment map does most ambient work
+    scene.add(new THREE.HemisphereLight(0xcfe0f0, 0x6a6a60, 1.5)); // no environment map: this does all the ambient work
     const sun = new THREE.DirectionalLight(0xfff0d6, 3.2);
     sun.position.set(24, 42, 14);
     // Shadows are rendered ONCE (everything that casts is static; see main.js),
     // so they cost nothing per frame. The shadow box covers the whole arena.
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(1024, 1024);
     const cam = sun.shadow.camera;
     cam.left = cam.bottom = -40;
     cam.right = cam.top = 40;

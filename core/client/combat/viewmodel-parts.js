@@ -3,6 +3,7 @@
  * (materials, colours, hands) belongs to the game's model builders.
  */
 import * as THREE from 'three';
+import { xboxMaterial } from '../graphics/materials.js';
 
 export function box(width, height, depth, mat) {
   return new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mat);
@@ -10,7 +11,7 @@ export function box(width, height, depth, mat) {
 
 /** A cylinder laid along -Z, the way a barrel points. */
 export function barrelPart(radius, length, mat) {
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 12), mat);
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 8), mat);
   mesh.rotation.x = Math.PI / 2;
   return mesh;
 }
@@ -39,7 +40,7 @@ export function bevelBox(width, height, depth, mat, bevel = 0.006) {
   shape.lineTo(-w, h);
   shape.closePath();
   const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: depth - 2 * b, bevelEnabled: true, bevelThickness: b, bevelSize: b, bevelSegments: 2, curveSegments: 1,
+    depth: depth - 2 * b, bevelEnabled: true, bevelThickness: b, bevelSize: b, bevelSegments: 1, curveSegments: 1,
   });
   geometry.translate(0, 0, -(depth - 2 * b) / 2);
   const uv = geometry.attributes.uv;
@@ -48,7 +49,7 @@ export function bevelBox(width, height, depth, mat, bevel = 0.006) {
 }
 
 const PROFILE_BEVEL = 0.003;
-const PROFILE_CURVE_STEPS = 5;
+const PROFILE_CURVE_STEPS = 3;
 
 /** The point `radius` (at most half the edge) from `corner` along the edge toward `from`. */
 function trimToward(from, corner, radius) {
@@ -82,7 +83,7 @@ function roundedShape(points, radius) {
 export function sideProfile(points, width, mat, round = 0.006) {
   const depth = Math.max(0.001, width - 2 * PROFILE_BEVEL);
   const geometry = new THREE.ExtrudeGeometry(roundedShape(points, round), {
-    depth, bevelEnabled: true, bevelThickness: PROFILE_BEVEL, bevelSize: PROFILE_BEVEL, bevelSegments: 2, curveSegments: PROFILE_CURVE_STEPS,
+    depth, bevelEnabled: true, bevelThickness: PROFILE_BEVEL, bevelSize: PROFILE_BEVEL, bevelSegments: 1, curveSegments: PROFILE_CURVE_STEPS,
   });
   geometry.translate(0, 0, -depth / 2);
   geometry.rotateY(-Math.PI / 2); // the outline's x becomes world z; the extrusion becomes the width
@@ -92,16 +93,16 @@ export function sideProfile(points, width, mat, round = 0.006) {
 }
 
 /** A round bar bent through `points` ([x, y, z] each): a trigger guard, a cable, a handle. */
-export function tubePart(points, radius, mat, segments = 24) {
+export function tubePart(points, radius, mat, segments = 12) {
   const curve = new THREE.CatmullRomCurve3(points.map((point) => new THREE.Vector3(...point)));
-  return new THREE.Mesh(new THREE.TubeGeometry(curve, segments, radius, 8), mat);
+  return new THREE.Mesh(new THREE.TubeGeometry(curve, segments, radius, 5), mat);
 }
 
 /**
  * A turned part (a barrel, a muzzle brake, a scope tube) along -Z, starting at z = 0 and running forward.
  * `profile` is a list of [radius, distanceForward] points; a ring or a flare is just a step in the radius.
  */
-export function lathePart(profile, mat, segments = 20) {
+export function lathePart(profile, mat, segments = 10) {
   const points = profile.map(([radius, distance]) => new THREE.Vector2(radius, distance));
   const geometry = new THREE.LatheGeometry(points, segments);
   geometry.rotateX(-Math.PI / 2); // the lathe axis (+Y) now runs down -Z
@@ -110,7 +111,7 @@ export function lathePart(profile, mat, segments = 20) {
 
 /** A glowing material: a dark base with its own light, so it shines in shade too. Intensity is animated per model. */
 export function glowMaterial(color, intensity = 1.8) {
-  return new THREE.MeshStandardMaterial({ color: 0x050505, emissive: color, emissiveIntensity: intensity, roughness: 0.4 });
+  return xboxMaterial({ color: 0x050505, emissive: color, emissiveIntensity: intensity, roughness: 0.4 });
 }
 
 /**
@@ -121,7 +122,7 @@ export function glowMaterial(color, intensity = 1.8) {
 export function makeGauge(count, { pitch = 0.024, size = [0.004, 0.011, 0.018], color = 0x00f0ff, lowColor = 0xff3b5c } = {}) {
   const colorAt = typeof color === 'function' ? color : () => color; // a function of time gives a colour that shifts
   const lit = glowMaterial(color, 2.2);
-  const dim = new THREE.MeshStandardMaterial({ color: 0x0a1418, emissive: 0x08242c, emissiveIntensity: 0.45, roughness: 0.5 });
+  const dim = xboxMaterial({ color: 0x0a1418, emissive: 0x08242c, emissiveIntensity: 0.45, roughness: 0.5 });
   const geometry = new THREE.BoxGeometry(...size);
   const group = new THREE.Group();
   const cells = [];

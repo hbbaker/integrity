@@ -80,6 +80,8 @@ function buildStopSign() {
   body.rotation.x = HOLD_TILT;
   const post = at(lathePart([[0.016, 0], [0.016, POST_TOP - POST_BOTTOM]], MAT.steel, 12), 0, POST_BOTTOM, 0);
   const foot = at(lathePart([[0.016, 0], [0.021, 0.012]], MAT.gunmetal, 12), 0, POST_BOTTOM, 0);
+  post.rotation.x = Math.PI / 2; // lathePart runs along -Z: turn the post and foot to run up along +Y
+  foot.rotation.x = Math.PI / 2;
   const signGroup = new THREE.Group();
   signGroup.position.set(0, SIGN_CENTRE_Y, 0);
   const rimMaterial = glowMaterial(0xffffff, 0.8);

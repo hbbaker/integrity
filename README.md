@@ -10,6 +10,9 @@ without striking one). Three.js from a CDN, no build step, no asset files, a std
 cargo run --release -p cable-bots-server      # serves the game on http://localhost:8123 (PORT to change)
 ```
 
+Start it with `CABLE_DEV=1` to turn on developer mode: the character screen (I) gets a DEV tab that lists
+every item and suit part and fits whatever you click into the slot you pick.
+
 Open the address in a browser. Friends on your network can use the LAN address the server prints.
 Keyboard and mouse or an Xbox / PlayStation pad; **SETTINGS** on the main menu rebinds every control
 and sets the sensitivity.

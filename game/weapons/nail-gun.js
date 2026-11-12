@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { box, at, bevelBox, lathePart, makeGauge, sideProfile, tubePart } from '../../core/client/combat/viewmodel-parts.js';
 import { MAT, makeArm, glowRing, makeHeat, rgbColor, rgbGlows } from './shared.js';
 import { Firearm } from '../../core/client/combat/firearm.js';
+import { xboxMaterial } from '../../core/client/graphics/materials.js';
 
 /** The numbers: damage, speed, ammo, recoil, sights. */
 export const config = {
@@ -31,8 +32,8 @@ function buildPistol() {
   const piston = at(lathePart([[0.009, 0], [0.009, 0.05], [0.012, 0.05], [0.012, 0.065]], MAT.steel, 12), 0, 0.04, 0.115); // recoils on every shot
   const nozzle = at(lathePart([[0.014, 0], [0.014, 0.02], [0.019, 0.022], [0.019, 0.03], [0.013, 0.034], [0.013, 0.046]], MAT.steel), 0, 0.04, -0.254);
   const heat = glowRing(0.0198, -0.272, 0.04, 0.008);
-  const stripe = new THREE.MeshStandardMaterial({ color: 0x050505, emissive: 0xffffff, emissiveIntensity: 1.6 });
-  const sightDot = new THREE.MeshStandardMaterial({ color: 0x050505, emissive: 0xffffff, emissiveIntensity: 2.4 });
+  const stripe = xboxMaterial({ color: 0x050505, emissive: 0xffffff, emissiveIntensity: 1.6 });
+  const sightDot = xboxMaterial({ color: 0x050505, emissive: 0xffffff, emissiveIntensity: 2.4 });
   const gauge = makeGauge(6, { pitch: 0.022, color: (time) => rgbColor(0.5, time) });
   gauge.group.position.set(-0.0268, -0.002, -0.04);
   const glows = rgbGlows([[heat.material, 0], [stripe, 0.2], [sightDot, 0.6]]);

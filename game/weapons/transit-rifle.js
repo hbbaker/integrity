@@ -52,7 +52,7 @@ function buildSniper() {
   const boltHandle = new THREE.Group(); // slides back and lifts when cycled
   boltHandle.add(
     at(lathePart([[0.008, 0], [0.008, 0.07]], MAT.steel, 10), 0.045, -0.02, 0),
-    at(new THREE.Mesh(new THREE.SphereGeometry(0.016, 14, 10), MAT.steel), 0.08, -0.03, 0),
+    at(new THREE.Mesh(new THREE.SphereGeometry(0.016, 8, 6), MAT.steel), 0.08, -0.03, 0),
   );
   boltHandle.children[0].rotation.set(0, 0, Math.PI / 2); // lay the arm along X
   boltHandle.position.set(0, 0.02, 0.12);

@@ -31,7 +31,7 @@ function box(width, height, depth, mat) {
   return new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mat);
 }
 
-function cylinder(radiusTop, radiusBottom, height, mat, segments = 12) {
+function cylinder(radiusTop, radiusBottom, height, mat, segments = 8) {
   return new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, height, segments), mat);
 }
 
@@ -96,7 +96,7 @@ function buildHydrant() {
   const group = new THREE.Group();
   group.add(at(cylinder(0.16, 0.19, 0.6, MAT.hydrant), 0, 0.3, 0));
   group.add(at(cylinder(0.2, 0.2, 0.06, MAT.hydrant), 0, 0.62, 0));
-  group.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), MAT.hydrant), 0, 0.7, 0));
+  group.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), MAT.hydrant), 0, 0.7, 0));
   for (const side of [-1, 1]) {
     const nozzle = cylinder(0.06, 0.06, 0.18, MAT.steel);
     nozzle.rotation.z = Math.PI / 2;

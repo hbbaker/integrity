@@ -41,10 +41,10 @@ class FreeRoamMode extends GameMode {
 export function startMinimalGame(canvas) {
   // 3. The stage and the world.
   const { renderer, scene, camera } = createStage({
-    canvas, fov: 70, exposure: 1, fogColor: 0x88aacc, fog: { near: 20, far: 80 }, maxPixelRatio: 2,
+    canvas, fov: 70, fogColor: 0x88aacc, fog: { near: 20, far: 80 }, internalHeight: 480,
   });
   camera.position.set(0, 2, 6);
-  const crate = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0xd9a441 }));
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xd9a441 }));
   scene.add(crate, new THREE.HemisphereLight(0xffffff, 0x444466, 2));
 
   // 4. Input: the player's controls and settings (saved in the browser when it allows).

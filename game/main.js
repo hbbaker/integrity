@@ -9,7 +9,10 @@ import { Weapons } from './weapons/index.js';
 import { Enemies } from './entities/enemies.js';
 import { Pickups } from './entities/pickups.js';
 import { Hud } from './ui/hud.js';
-import { Inventory } from './ui/inventory.js';
+import { CharacterScreen } from './ui/character-screen.js';
+import { SuitState } from './suit/suit-state.js';
+import { MechSuit, BEACON } from './entities/mech-suit-entity.js';
+import { loadDevFlag } from './dev-flag.js';
 import { Cyborg } from './assets/cyborg.js';
 import { AudioFX } from './audio.js';
 import { NetClient, NET_STATUS } from '../core/client/net/net-client.js';
@@ -32,7 +35,7 @@ import { loadName } from './ui/multiplayer-menu.js';
 import { GamepadInput } from '../core/client/engine/gamepad.js';
 import { ActionInput } from '../core/client/engine/action-input.js';
 import { DeviceInput } from '../core/client/engine/input.js';
-import { Bindings } from '../core/client/engine/bindings.js';
+import { Bindings, FAMILIES, controlLabel } from '../core/client/engine/bindings.js';
 import { SettingsModel } from '../core/client/engine/settings-model.js';
 import { ACTIONS, ACTION_GROUPS, PAD_PRESETS } from './ui/actions.js';
 import { SETTING_DEFS, SETTING_GROUPS } from './ui/settings-defs.js';
@@ -48,9 +51,9 @@ import { CONFIG } from './config.js';
  *  Renderer, scene, camera
  * ========================================================================== */
 const canvas = document.getElementById('game');
-const DEFAULT_FOG = { near: 45, far: 130 }; // a mode's setup can change it (the sandbox sees further)
-const { renderer, scene, camera, skyDome, envMap, resize: resizeStage } = createStage({
-  canvas, fov: CONFIG.player.fov, exposure: CONFIG.exposure, fogColor: CONFIG.fogColor, fog: DEFAULT_FOG, maxPixelRatio: CONFIG.maxPixelRatio,
+const DEFAULT_FOG = { near: 25, far: 90 }; // a mode's setup can change it (the sandbox sees further)
+const { renderer, scene, camera, skyDome, resize: resizeStage } = createStage({
+  canvas, fov: CONFIG.player.fov, fogColor: CONFIG.fogColor, fog: DEFAULT_FOG, internalHeight: CONFIG.internalHeight,
 });
 
 /* ========================================================================== *
@@ -61,11 +64,12 @@ const hud = new Hud(CONFIG);
 const fx = createEffects(scene, { bubbleFont: COMIC_FONT });
 const world = new World(scene, CONFIG);
 const player = new Player(camera, world, CONFIG.player);
-const enemies = new Enemies({ cfg: CONFIG, scene, world, fx, player });
-const weapons = new Weapons({ cfg: CONFIG, camera, mainScene: scene, envMap, world, enemies, player, fx, hud, audio });
-const cyborg = new Cyborg({ scene, player, weapons });
+const enemies = new Enemies({ cfg: CONFIG, scene, world, fx, player, audio });
+const weapons = new Weapons({ cfg: CONFIG, camera, mainScene: scene, world, enemies, player, fx, hud, audio });
+const cyborg = new Cyborg({ scene, player, weapons, rigged: true }); // the Y Bot loads in the background; the plain humanoid shows until it is there
 weapons.tp = cyborg;
 const pickups = new Pickups(scene, CONFIG);
+const suitState = new SuitState();
 const scoreboard = new Scoreboard();
 const DIG_MESSAGE_PREFIX = 'dg_'; // the DIG SITE server messages (server/src/dig/lobby.rs)
 const net = new NetClient({
@@ -87,11 +91,12 @@ const net = new NetClient({
     modes.onPeerMessage(from, message);
   },
 }, { gamePrefix: DIG_MESSAGE_PREFIX });
-const remotes = new RemotePlayers({ scene, fx, world, weapons, audio, config: CONFIG.multiplayer });
+const remotes = new RemotePlayers({ scene, fx, world, weapons, audio, config: CONFIG.multiplayer, suitConfig: CONFIG.suit });
 remotes.listener = camera;
 weapons.enemies = new Targets({ enemies, remotes }); // shots now hit bots and other players alike
 const deathmatch = new Deathmatch({
   config: CONFIG.multiplayer, arenaHalf: CONFIG.arena.half, net, player, weapons, cyborg, remotes, world, scoreboard, hud, pickups,
+  suit: () => mechSuit.networkState(),
 });
 const mpMenu = new MultiplayerMenu({
   onJoin: (name) => net.join(name),
@@ -123,6 +128,7 @@ const soloMenu = new SoloMenu({
 const digHud = new DigHud();
 const dig = new DigMode({
   config: CONFIG.dig, net, player, weapons, remotes, world, scene, camera, audio, hud, digHud, scoreboard,
+  suit: () => mechSuit.networkState(),
 });
 const digLobby = new DigLobbyScreen({
   onJoin: (name) => net.sendGame({ t: 'dg_join', name }),
@@ -135,14 +141,55 @@ const digLobby = new DigLobbyScreen({
     hud.showStart(true, false);
   },
 });
-const inventory = new Inventory({
-  weapons,
-  onResume: () => {
-    inventory.close();
-    audio.unlock();
-    requestLock();
+const mechSuit = new MechSuit({
+  scene, world, player, cyborg, hud, suitState, config: CONFIG.suit, playerConfig: CONFIG.player,
+  keyLabel: () => {
+    const control = bindings.slots('interact', FAMILIES.KEYBOARD)[0];
+    return control ? controlLabel(control) : '?';
   },
 });
+
+/** Close the character screen and go back to the game (the mouse is captured again). */
+function resumeFromCharacterScreen() {
+  characterScreen.close();
+  audio.unlock();
+  requestLock();
+}
+
+const characterScreen = new CharacterScreen({
+  weapons,
+  suitState,
+  suitActions: {
+    canPlace: () => mechSuit.canPlace(),
+    place: () => { if (equipBeacon(BEACON.DEPLOY)) resumeFromCharacterScreen(); },
+    canPickUp: () => mechSuit.canPickUp(),
+    pickUp: () => { if (equipBeacon(BEACON.RECALL)) resumeFromCharacterScreen(); },
+    exit: () => {
+      resumeFromCharacterScreen();
+      mechSuit.interact();
+    },
+  },
+  onResume: resumeFromCharacterScreen,
+});
+loadDevFlag().then((enabled) => characterScreen.setDevMode(enabled));
+
+/*
+ * The suit beacon: the character screen arms a deploy (suit down) or recall (suit up) beacon and puts it in your hand;
+ * the fire button throws it, and what you held before comes back. Switching to something else instead puts it away.
+ */
+const beaconIndex = CONFIG.weapons.list.findIndex((item) => item.id === 'beacon');
+let beaconReturnIndex = weapons.startIndex;
+
+function equipBeacon(mode) {
+  if (!mechSuit.arm(mode)) return false;
+  if (weapons.index !== beaconIndex) beaconReturnIndex = weapons.switching ? weapons.pendingIndex : weapons.index;
+  weapons.select(beaconIndex);
+  return true;
+}
+
+weapons.onBeaconThrow = () => {
+  if (mechSuit.throwBeacon()) weapons.select(beaconReturnIndex);
+};
 
 const stats = { kills: 0 }; // bots the player has killed this run
 
@@ -162,6 +209,7 @@ function prepareMode(mode) {
   player.spawnY = 0;
   player.spawnYaw = 0;
   player.spawnZ = setup.spawn.z;
+  mechSuit.clear();
   player.reset();
   cyborg.reset();
   player.invulnerable = setup.invulnerable;
@@ -180,6 +228,7 @@ function prepareMode(mode) {
 /** Back to the mode-select screen (the scene keeps rendering behind it). Only a full exit resets the scene; going back to a lobby keeps it. */
 function cleanupMode(mode, reason) {
   if (reason !== 'menu') return;
+  mechSuit.clear();
   enemies.clear();
   pickups.clear();
   hud.clearNumbers();
@@ -224,6 +273,7 @@ player.onMantle = () => audio.mantle();
 player.onSlam = () => audio.slide();
 player.onDeath = () => {
   audio.deathDialup();
+  mechSuit.ejectOnDeath();
   if (modes.onPlayerDeath()) return; // a mode may respawn the player or show its own end screen
   hud.showDeath(0, stats.kills);
   document.exitPointerLock();
@@ -233,12 +283,12 @@ enemies.onKill = (e) => {
   modes.onEnemyKilled(e);
   stats.kills += 1;
   hud.setKills(stats.kills);
-  pickups.maybeDrop(e.pos.x, e.pos.y, e.pos.z, player.health < CONFIG.player.maxHealth * 0.5);
+  pickups.maybeDrop(e.pos.x, e.pos.y, e.pos.z, player.health < player.cfg.maxHealth * 0.5);
 };
 
 pickups.onCollect = (kind) => {
   if (kind === 'health') {
-    if (player.health >= CONFIG.player.maxHealth) return false; // leave it for later
+    if (player.health >= player.cfg.maxHealth) return false; // leave it for later
     player.heal(CONFIG.pickups.healthAmount);
   } else if (!weapons.addAmmo(CONFIG.pickups.ammo)) {
     return false;
@@ -331,12 +381,12 @@ const input = {
   // One-shot edges: latched until a fixed step consumes them, so a press is never
   // lost on a rendered frame that happens to run zero fixed steps.
   jumpPressed: false, slidePressed: false, sprintPressed: false, firePressed: false, ammoPressed: false,
-  reloadPressed: false, meleePressed: false, selectSlot: -1, wheel: 0,
+  reloadPressed: false, meleePressed: false, interactPressed: false, selectSlot: -1, wheel: 0,
   analogActive: false, analogX: 0, analogY: 0, // controller stick: any direction, with a throttle (see player.update)
 
   clearEdges() {
     this.jumpPressed = this.slidePressed = this.sprintPressed = this.firePressed = this.ammoPressed = false;
-    this.reloadPressed = this.meleePressed = false;
+    this.reloadPressed = this.meleePressed = this.interactPressed = false;
     this.selectSlot = -1;
     this.wheel = 0;
   },
@@ -366,7 +416,7 @@ function requestLock(retry = true) {
 
 /** True when a game is running and the mouse was released by accident (Esc, alt-tab, a click outside). */
 function canResume() {
-  return !inventory.isOpen && modes.canResume(player);
+  return !characterScreen.isOpen && modes.canResume(player);
 }
 
 /** What the bound controls that are plain commands do (menus, view toggle, mute). */
@@ -376,14 +426,14 @@ function onCommand(id, { down, gateOpen }) {
     audio.toggleMute();
     return;
   }
-  if (inventory.isOpen) { // the pointer is free and the menu is open: slot keys pick, the inventory key closes
-    if (id === 'inventory') inventory.onResume();
-    else if (id.startsWith('slot') && Number(id.slice(4)) <= 3) inventory.selectSlot(Number(id.slice(4)) - 1);
+  if (characterScreen.isOpen) { // the pointer is free and the menu is open: slot keys pick, the inventory key closes
+    if (id === 'inventory') characterScreen.onResume();
+    else if (id.startsWith('slot') && Number(id.slice(4)) <= 3) characterScreen.selectSlot(Number(id.slice(4)) - 1);
     return;
   }
   if (id === 'inventory') {
     if (!player.alive || !modes.allowsInventory) return;
-    inventory.open();
+    characterScreen.open();
     hud.showStart(false);
     document.exitPointerLock(); // the game pauses while the pointer is free
     return;
@@ -407,8 +457,8 @@ const devices = new DeviceInput({
       return true;
     }
     if (settingsScreen.isOpen) return settingsScreen.onEscape();
-    if (!inventory.isOpen) return false;
-    inventory.close();
+    if (!characterScreen.isOpen) return false;
+    characterScreen.close();
     hud.showStart(player.alive, modes.current !== null);
     return true;
   },
@@ -541,7 +591,7 @@ document.addEventListener('pointerlockchange', () => {
   clearInput(); // avoid keys stuck "down" when focus changes
   pad.disengage(); // mouse and pad take turns: the pad asks again with A or START
   if (locked) padPending = false;
-  hud.showStart(!locked && player.alive && !inventory.isOpen, modes.current !== null);
+  hud.showStart(!locked && player.alive && !characterScreen.isOpen, modes.current !== null);
 });
 
 document.addEventListener('pointerlockerror', () => hud.showStart(player.alive, modes.current !== null));
@@ -576,11 +626,14 @@ window.addEventListener('resize', () => weapons.resize(resizeStage()));
  * ========================================================================== */
 function fixedUpdate(dt) {
   modes.fixedUpdate(dt, input);
-  const stepInput = modes.filterInput(input); // a mode may block movement or keys
+  if (input.interactPressed) mechSuit.interact();
+  const stepInput = mechSuit.filterInput(modes.filterInput(input)); // a mode may block movement or keys; the suit's climb blocks all of it
   if (player.alive) { // in some modes the world runs on while you wait to respawn, but the dead do nothing
     player.update(dt, stepInput);
     weapons.update(dt, stepInput);
   }
+  mechSuit.update(dt);
+  if (mechSuit.armedMode && !weapons.switching && weapons.index !== beaconIndex) mechSuit.disarm(); // you put the beacon away
   enemies.update(dt);
   modes.afterFixedUpdate(dt);
   if (player.alive) pickups.update(dt, player.pos);
@@ -593,12 +646,13 @@ function renderFrame(alpha, dt) {
   skyDome.position.copy(camera.position);
   camera.updateMatrixWorld(); // HUD projection and viewmodel read this frame's camera
   cyborg.update(dt, alpha, time, weapons);
+  mechSuit.animate();
   weapons.updateView(dt, time);
   enemies.animate(alpha, time, dt);
   remotes.update(dt, time, performance.now() * 0.001);
   pickups.animate(time);
   fx.update(dt);
-  hud.setHealth(player.health, CONFIG.player.maxHealth);
+  hud.setHealth(player.health, player.cfg.maxHealth);
   hud.update(dt, camera, weapons.crosshairSpread());
 
   renderer.clear();

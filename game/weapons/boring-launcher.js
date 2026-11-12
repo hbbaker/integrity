@@ -25,6 +25,7 @@ import { at, bevelBox, barrelPart, lathePart, makeGauge, sideProfile, tubePart, 
 import { Weapon } from '../../core/client/combat/weapon.js';
 import { DrillHeads } from '../entities/drill-heads.js';
 import { MAT, makeArm, glowRing, makeHeat, rgbColor, rgbGlows } from './shared.js';
+import { xboxMaterial } from '../../core/client/graphics/materials.js';
 
 /** Height of the scope's axis above the model origin: ADS puts this on the centre of the view. */
 const SCOPE_AXIS_HEIGHT = 0.21;
@@ -87,9 +88,9 @@ export function buildDrillHead() {
   const spinner = new THREE.Group();
   const ring = glowMaterial(0xffffff, 2);
   spinner.add(
-    at(lathePart(HEAD_PROFILE, MAT.steel, 28), 0, 0, HEAD_LENGTH),
-    at(lathePart([[0.272, 0.03], [0.272, 0.2]], MAT.orange, 28), 0, 0, HEAD_LENGTH), // the orange collar
-    at(lathePart([[0.2705, 0.21], [0.2705, 0.225]], ring, 28), 0, 0, HEAD_LENGTH), // glowing ring
+    at(lathePart(HEAD_PROFILE, MAT.steel, 12), 0, 0, HEAD_LENGTH),
+    at(lathePart([[0.272, 0.03], [0.272, 0.2]], MAT.orange, 12), 0, 0, HEAD_LENGTH), // the orange collar
+    at(lathePart([[0.2705, 0.21], [0.2705, 0.225]], ring, 12), 0, 0, HEAD_LENGTH), // glowing ring
   );
   const coneRadius = (distance) => {
     for (let i = 1; i < HEAD_PROFILE.length; i++) {
@@ -108,7 +109,7 @@ export function buildDrillHead() {
       const radius = coneRadius(distance) + 0.012;
       points.push([Math.cos(angle) * radius, Math.sin(angle) * radius, HEAD_LENGTH - distance]);
     }
-    spinner.add(tubePart(points, 0.02, MAT.steel, 80));
+    spinner.add(tubePart(points, 0.02, MAT.steel, 32));
   }
   for (let i = 0; i < TEETH; i++) { // carbide teeth round the cone
     const angle = (i / TEETH) * Math.PI * 2;
@@ -313,14 +314,14 @@ const SCOPE_Z = { rear: 0.3, front: -0.2 }; // the scope tube runs from the eyep
  * lenses and a glowing strip. Its axis is SCOPE_AXIS_HEIGHT above the model origin, which is what ADS centres.
  */
 function buildScope() {
-  const lens = new THREE.MeshStandardMaterial({ color: 0x2a6bff, metalness: 0.3, roughness: 0.05, emissive: 0x0a2a88, emissiveIntensity: 0.6 });
+  const lens = xboxMaterial({ color: 0x2a6bff, metalness: 0.3, roughness: 0.05, emissive: 0x0a2a88, emissiveIntensity: 0.6 });
   const rail = glowMaterial(0xffffff, 1.2);
   const group = new THREE.Group();
   const length = SCOPE_Z.rear - SCOPE_Z.front;
   group.add(
-    at(lathePart([[0.03, 0], [0.03, length]], MAT.gunmetal, 24), 0, SCOPE_AXIS_HEIGHT, SCOPE_Z.rear), // main tube
-    at(lathePart([[0.03, 0], [0.04, 0.02], [0.04, 0.1], [0.034, 0.1]], MAT.gunmetal, 24), 0, SCOPE_AXIS_HEIGHT, SCOPE_Z.front + 0.1), // objective bell
-    at(lathePart([[0.036, 0], [0.03, 0.03]], MAT.gunmetal, 24), 0, SCOPE_AXIS_HEIGHT, SCOPE_Z.rear), // eyepiece flare
+    at(lathePart([[0.03, 0], [0.03, length]], MAT.gunmetal, 12), 0, SCOPE_AXIS_HEIGHT, SCOPE_Z.rear), // main tube
+    at(lathePart([[0.03, 0], [0.04, 0.02], [0.04, 0.1], [0.034, 0.1]], MAT.gunmetal, 12), 0, SCOPE_AXIS_HEIGHT, SCOPE_Z.front + 0.1), // objective bell
+    at(lathePart([[0.036, 0], [0.03, 0.03]], MAT.gunmetal, 12), 0, SCOPE_AXIS_HEIGHT, SCOPE_Z.rear), // eyepiece flare
     at(barrelPart(0.034, 0.02, lens), 0, SCOPE_AXIS_HEIGHT, SCOPE_Z.front - 0.0),
     at(barrelPart(0.026, 0.02, lens), 0, SCOPE_AXIS_HEIGHT, SCOPE_Z.rear),
     at(lathePart([[0.011, 0], [0.011, 0.02], [0.013, 0.02], [0.013, 0.026]], MAT.steel, 14), 0, SCOPE_AXIS_HEIGHT + 0.03, 0.1), // elevation turret
@@ -360,7 +361,7 @@ function buildLauncher() {
 
   root.add(
     at(lathePart([[0.08, 0], [0.085, 0.02], [0.085, 0.3], [0.092, 0.32], [0.092, 0.34], [0.085, 0.36], [0.085, 0.8], [0.1, 0.82], [0.1, 0.86]], MAT.orange, 36), 0, 0, 0.3), // the launch tube
-    at(lathePart([[0, 0], [0.105, 0], [0.105, 0.03], [0, 0.03]], MAT.rubber, 24), 0, 0, 0.345), // shoulder pad
+    at(lathePart([[0, 0], [0.105, 0], [0.105, 0.03], [0, 0.03]], MAT.rubber, 12), 0, 0, 0.345), // shoulder pad
     heat.ring,
     at(sideProfile(GEARBOX, 0.09, MAT.gunmetal, 0.012), 0, 0, 0), // the drive: the rotary gearbox
     at(bevelBox(0.094, 0.01, 0.2, MAT.orange, 0.003), 0, 0.085, 0.0), // an orange band over it

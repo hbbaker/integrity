@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { material } from '../../core/client/graphics/materials.js';
+import { material, xboxMaterial } from '../../core/client/graphics/materials.js';
 import { surfaceMaterial } from '../../core/client/graphics/surfaces.js';
 import { box, at, lathePart, glowMaterial } from '../../core/client/combat/viewmodel-parts.js';
 
@@ -50,7 +50,7 @@ function createMaterials() {
     trace: surfaceMaterial('circuit', { color: '#101114', glow: '#ffffff', metalness: 0.5, roughness: 0.4, bumpScale: 3, emissiveIntensity: 1.7 }), // circuit traces: white glow map, tinted by the RGB cycle
     glove: material(0x0c0d0e, { metalness: 0.7, roughness: 0.4 }),
     sleeve: material(0x1a1c1e, { metalness: 0.75, roughness: 0.42 }),
-    glow: new THREE.MeshStandardMaterial({ color: 0x050505, emissive: 0xffffff, emissiveIntensity: 1.8, roughness: 0.4 }),
+    glow: xboxMaterial({ color: 0x050505, emissive: 0xffffff, emissiveIntensity: 1.8, roughness: 0.4 }),
   };
   sharedGlows = rgbGlows([[built.trace, 0.0], [built.glow, 0.33], [built.orange, 0.66]]);
   return built;
@@ -81,8 +81,8 @@ const SLEEVE_BAND_DISTANCE = 0.14; // the glowing ring sits this far from the wr
 export function makeSleeve(dir) {
   const side = Math.sign(dir[0]) || 1;
   const direction = new THREE.Vector3(...dir).normalize();
-  const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.064, 0.046, 1, 10), MAT.sleeve); // unit length, stretched to the shoulder
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.067, 0.067, 0.02, 12), MAT.glow); // glowing RGB ring
+  const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.064, 0.046, 1, 8), MAT.sleeve); // unit length, stretched to the shoulder
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.067, 0.067, 0.02, 8), MAT.glow); // glowing RGB ring
   const group = new THREE.Group();
   group.add(sleeve, band);
   group.userData.limb = { sleeve, band, shoulder: [side * SHOULDER.x, SHOULDER.y, SHOULDER.z], bandDistance: SLEEVE_BAND_DISTANCE };

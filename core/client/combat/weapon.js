@@ -35,6 +35,7 @@ export class Weapon extends Holdable {
   }
 
   reset() {
+    this.equipAge = Infinity; // seconds since the item was taken out; models read it for a draw animation
     if (this.typeCfgs) {
       this.type = this.base.defaultAmmo;
       this.cfg = this.typeCfgs[this.type];
@@ -83,7 +84,12 @@ export class Weapon extends Holdable {
     this.cancelReload();
   }
 
+  onEquip() {
+    this.equipAge = 0;
+  }
+
   tick(holder, dt) {
+    this.equipAge += dt;
     if (this.pumpTimer > 0) {
       this.pumpTimer -= dt;
       if (this.pumpTimer <= 0) holder.audio.click('pump');
@@ -302,7 +308,8 @@ export class Weapon extends Holdable {
 
   /**
    * What a model's `animate(dt, time, state)` reads: ammo (0..1), rounds and capacity, pulse (1 right after a shot,
-   * falling to 0 as the next one gets ready), aiming (0..1), reloading, and swing (a melee swing is in progress).
+   * falling to 0 as the next one gets ready), aiming (0..1), reloading, reloadProgress (0..1 through a whole-magazine
+   * reload, else 0), equipAge (seconds since the item was taken out), and swing (a melee swing is in progress).
    */
   modelState(holder) {
     const c = this.cfg;
@@ -315,6 +322,8 @@ export class Weapon extends Holdable {
       pulse,
       aiming: holder.adsBlend,
       reloading: this.reloading,
+      reloadProgress: this.reloading && !c.perShell ? clamp(1 - this.reloadTimer / c.reloadTime, 0, 1) : 0,
+      equipAge: this.equipAge,
       swing: holder.swingT >= 0 || holder.punchT.some((t) => t >= 0),
     };
   }

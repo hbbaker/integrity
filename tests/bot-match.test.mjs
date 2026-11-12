@@ -13,7 +13,8 @@ const { HealthRegen } = await load('regen');
 const CONFIG = await loadConfig();
 CONFIG.botMatch.killLimit = 3;
 CONFIG.botMatch.unlimited = false; // the normal rules; the unlimited case is tested at the end
-for (const type of Object.values(CONFIG.enemies.types)) type.damage = 0; // the bots cannot hurt: deaths in this test are explicit
+CONFIG.enemies.gun.damage = 0;
+for (const type of Object.values(CONFIG.enemies.types)) { type.damage = 0; if (type.gun) type.gun.damage = 0; } // the bots cannot hurt, with fists or pistols: deaths in this test are explicit
 
 let fails = 0;
 const check = (c, m) => { console.log(c ? 'ok  :' : 'FAIL:', m); if (!c) fails++; };

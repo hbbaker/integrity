@@ -5,9 +5,29 @@ import * as THREE from 'three';
  * Nothing here knows about a particular game.
  */
 
-/** Standard PBR material. Defaults to a rough dielectric. */
-export function material(color, { roughness = 0.75, metalness = 0, ...extra } = {}) {
-  return new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra });
+const SPECULAR_BASE = 0.06; // a matte surface still catches a faint highlight
+const SPECULAR_PER_METAL = 0.3;
+const SHININESS_MIN = 6;
+const SHININESS_RANGE = 60;
+
+/**
+ * An original-Xbox style material: Phong lighting with one small highlight, no environment reflections.
+ * It accepts the old PBR names so callers read the same: `roughness` sets how tight the highlight is and
+ * `metalness` how bright it is. Height and bump maps are ignored (a 2001 console did not light them).
+ * Everything else (color, map, emissive, emissiveMap, emissiveIntensity, transparent, opacity, side...) passes through.
+ */
+export function xboxMaterial({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- bumpMap, bumpScale and clearcoat are accepted and dropped on purpose (see above)
+  roughness = 0.75, metalness = 0, bumpMap, bumpScale, clearcoat, ...params
+} = {}) {
+  const shininess = SHININESS_MIN + (1 - roughness) * SHININESS_RANGE;
+  const specular = new THREE.Color().setScalar(SPECULAR_BASE + metalness * SPECULAR_PER_METAL);
+  return new THREE.MeshPhongMaterial({ shininess, specular, ...params });
+}
+
+/** The standard solid material: Phong lighting (see xboxMaterial). Defaults to a rough, matte surface. */
+export function material(color, options = {}) {
+  return xboxMaterial({ color, ...options });
 }
 
 
@@ -20,7 +40,7 @@ function makeCanvas(size) {
 function toTexture(canvas, { repeat = true } = {}) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8; // clamped by the renderer to what the GPU supports
+  texture.anisotropy = 1; // trilinear only: a 2001 console had no anisotropic filtering
   if (repeat) texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   return texture;
 }
@@ -54,16 +74,16 @@ function addBlotches(ctx, size, count, color, maxRadius) {
 
 /** Poured concrete with stains, hairline cracks and expansion joints. Tile = 4 m. */
 export function createConcreteTexture() {
-  const size = 512;
+  const size = 256;
   const canvas = makeCanvas(size);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#8c8e8a';
   ctx.fillRect(0, 0, size, size);
-  addBlotches(ctx, size, 40, 'rgba(60,58,50,0.22)', 90);
-  addBlotches(ctx, size, 25, 'rgba(190,190,180,0.12)', 70);
+  addBlotches(ctx, size, 40, 'rgba(60,58,50,0.22)', 45);
+  addBlotches(ctx, size, 25, 'rgba(190,190,180,0.12)', 35);
   addGrain(ctx, size, 38);
   ctx.strokeStyle = 'rgba(40,40,38,0.35)';
-  ctx.lineWidth = 3; // joints around the tile
+  ctx.lineWidth = 2; // joints around the tile
   ctx.strokeRect(1, 1, size - 2, size - 2);
   ctx.lineWidth = 1;
   for (let i = 0; i < 5; i++) { // cracks
@@ -72,8 +92,8 @@ export function createConcreteTexture() {
     let y = Math.random() * size;
     ctx.moveTo(x, y);
     for (let s = 0; s < 12; s++) {
-      x += (Math.random() - 0.5) * 50;
-      y += (Math.random() - 0.3) * 40;
+      x += (Math.random() - 0.5) * 25;
+      y += (Math.random() - 0.3) * 20;
       ctx.lineTo(x, y);
     }
     ctx.stroke();
@@ -83,73 +103,71 @@ export function createConcreteTexture() {
 
 /** Corrugated painted steel (shipping container). Tile = 2 m, ribs run vertically. */
 export function createCorrugatedTexture(baseColor) {
-  const size = 256;
+  const size = 128;
   const canvas = makeCanvas(size);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, size, size);
-  const ribWidth = 16;
+  const ribWidth = 8;
   for (let x = 0; x < size; x += ribWidth) { // light/dark halves fake the rib shading
     ctx.fillStyle = 'rgba(255,255,255,0.10)';
     ctx.fillRect(x, 0, ribWidth / 2, size);
     ctx.fillStyle = 'rgba(0,0,0,0.20)';
     ctx.fillRect(x + ribWidth / 2, 0, ribWidth / 2, size);
   }
-  addBlotches(ctx, size, 30, 'rgba(90,40,10,0.35)', 50); // rust
-  addBlotches(ctx, size, 20, 'rgba(0,0,0,0.25)', 40); // grime
+  addBlotches(ctx, size, 30, 'rgba(90,40,10,0.35)', 25); // rust
+  addBlotches(ctx, size, 20, 'rgba(0,0,0,0.25)', 20); // grime
   addGrain(ctx, size, 26);
   return toTexture(canvas);
 }
 
 /** Diamond-plate style dark steel for platform tops. Tile = 2 m. */
 export function createSteelTexture() {
-  const size = 256;
+  const size = 128;
   const canvas = makeCanvas(size);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#5b6168';
   ctx.fillRect(0, 0, size, size);
   ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  for (let y = 0; y < size; y += 16) {
-    for (let x = 0; x < size; x += 16) {
-      const o = (y / 16) % 2 ? 8 : 0;
+  for (let y = 0; y < size; y += 8) {
+    for (let x = 0; x < size; x += 8) {
+      const o = (y / 8) % 2 ? 4 : 0;
       ctx.save();
-      ctx.translate(x + o + 4, y + 8);
-      ctx.rotate(((x / 16 + y / 16) % 2 ? 1 : -1) * 0.7);
-      ctx.fillRect(-5, -1.5, 10, 3);
+      ctx.translate(x + o + 2, y + 4);
+      ctx.rotate(((x / 8 + y / 8) % 2 ? 1 : -1) * 0.7);
+      ctx.fillRect(-2.5, -1, 5, 2);
       ctx.restore();
     }
   }
-  addBlotches(ctx, size, 20, 'rgba(0,0,0,0.25)', 50);
+  addBlotches(ctx, size, 20, 'rgba(0,0,0,0.25)', 25);
   addGrain(ctx, size, 24);
   return toTexture(canvas);
 }
 
 /** Yellow/black diagonal hazard stripes for ramps and barriers. Tile = 2 m. */
 export function createHazardTexture() {
-  const size = 256;
+  const size = 128;
   const canvas = makeCanvas(size);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#d8aa1a';
   ctx.fillRect(0, 0, size, size);
   ctx.fillStyle = '#1b1b1b';
-  for (let i = -size; i < size * 2; i += 64) { // diagonal bands
+  for (let i = -size; i < size * 2; i += 32) { // diagonal bands
     ctx.beginPath();
     ctx.moveTo(i, 0);
-    ctx.lineTo(i + 32, 0);
-    ctx.lineTo(i + 32 - size, size);
+    ctx.lineTo(i + 16, 0);
+    ctx.lineTo(i + 16 - size, size);
     ctx.lineTo(i - size, size);
     ctx.closePath();
     ctx.fill();
   }
-  addBlotches(ctx, size, 20, 'rgba(0,0,0,0.3)', 40);
+  addBlotches(ctx, size, 20, 'rgba(0,0,0,0.3)', 20);
   addGrain(ctx, size, 28);
   return toTexture(canvas);
 }
 
 /**
  * Sky dome: a big inside-out sphere with a vertical gradient and a soft sun glow.
- * Used both as the visible sky and (via createEnvironment) as the reflection /
- * ambient light source for every PBR material.
  */
 export function createSkyDome(radius) {
   const canvas = document.createElement('canvas');
@@ -167,21 +185,11 @@ export function createSkyDome(radius) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(radius, 24, 16),
+    new THREE.SphereGeometry(radius, 16, 10),
     new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide, fog: false, depthWrite: false }),
   );
   dome.renderOrder = -1;
   return dome;
-}
-
-/** Prefiltered environment map made from the sky, for PBR reflections and ambient light. */
-export function createEnvironment(renderer) {
-  const skyScene = new THREE.Scene();
-  skyScene.add(createSkyDome(50));
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const target = pmrem.fromScene(skyScene, 0.02);
-  pmrem.dispose();
-  return target.texture;
 }
 
 /* ------------------------------------------------------------------ *

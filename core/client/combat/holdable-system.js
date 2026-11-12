@@ -43,7 +43,7 @@ function collectLimbs(root) {
 }
 
 export class HoldableSystem {
-  constructor({ config, types, models, camera, mainScene, envMap, world, enemies, player, fx, hud, audio }) {
+  constructor({ config, types, models, camera, mainScene, world, enemies, player, fx, hud, audio }) {
     this.cfg = config;
     this.modelDefs = models;
     this.camera = camera;
@@ -59,10 +59,8 @@ export class HoldableSystem {
 
     // --- Viewmodel scene / camera ---
     this.vmScene = new THREE.Scene();
-    this.vmScene.environment = envMap; // same sky as the world, so metal reflects consistently
-    this.vmScene.environmentIntensity = 0.9;
-    this.vmScene.add(new THREE.HemisphereLight(0xcfe0f0, 0x6a6a60, 0.3));
-    const sun = new THREE.DirectionalLight(0xfff0d6, 2.6);
+    this.vmScene.add(new THREE.HemisphereLight(0xcfe0f0, 0x6a6a60, 1.1)); // no environment map: this is the only ambient light
+    const sun = new THREE.DirectionalLight(0xfff0d6, 2.2);
     sun.position.set(1, 2, 1.5);
     this.vmScene.add(sun);
     this.vmCamera = new THREE.PerspectiveCamera(config.viewmodelFov, innerWidth / innerHeight, 0.02, 10);
@@ -507,6 +505,10 @@ export class HoldableSystem {
 
     item.afterPose(this, model, dt, time);
     this._reachShoulders(model);
+    if (model.afterView) { // a model that places its own limbs from the hands' final positions
+      this.anchor.updateMatrixWorld(true);
+      model.afterView();
+    }
 
     this.flash.update(dt);
     if (this.worldLightTime > 0) {

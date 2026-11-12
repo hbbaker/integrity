@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { material } from '../../core/client/graphics/materials.js';
+import { material, xboxMaterial } from '../../core/client/graphics/materials.js';
 import { surfaceMaterial, cssColor } from '../../core/client/graphics/surfaces.js';
 import { clamp } from '../../core/client/engine/math.js';
 
@@ -16,6 +16,12 @@ import { clamp } from '../../core/client/engine/math.js';
  *    at the player from a few metres out.
  *  - cover: when hurt, run to the far side of a tall box (one that actually blocks
  *    line of sight to the player), crouch there, then rush out.
+ *  - pistols: most bots carry one (CONFIG.enemies.gun, per type `gun`). Within range and with a clear line, a bot
+ *    stops closing in, raises the gun (your warning), and fires bursts, sidestepping as it does. Walls block its shots.
+ *  - cover fire: a bot with a pistol uses cover on its own. It runs behind a tall box, crouches out of sight, stands
+ *    to fire a burst, and ducks again (over a low box it stands up; round a tall one it leans out past the edge and steps
+ *    back). It ducks at once when hit or when you aim at it, and moves to other cover when you flank it or it has
+ *    peeked enough times.
  *  - dodge: if the player's crosshair rests on a bot for a moment, it sidesteps
  *    (sometimes with a hop). Hitscan is instant, so dodging means leaving the
  *    aim line BEFORE the shot: flick or lead your targets.
@@ -28,6 +34,17 @@ import { clamp } from '../../core/client/engine/math.js';
  * Model space (scale 1, facing +Z): feet y=0, hips 0.875, shoulders 1.35, head
  * centre 1.54, antenna tips ~1.8.
  */
+
+const HIDE_CHECK = 0.4; // seconds between checks that cover still hides a bot from the player
+const GUNNER_HIDE_SHARE = 0.5; // a bot with a pistol stays down for this share of the usual hide time
+const STRAFE_FLIP = [1.2, 2.6]; // seconds between a shooting bot's changes of sidestep direction
+const LINE_CHECK = 0.2; // seconds between line-of-sight checks while shooting from the open
+const SHOT_SPARK = 0xffe27a;
+const TRACER_SPEED = 140; // m/s: slow enough to see coming
+const LEAN_CLEARANCE = 0.3; // metres past a box's edge that a bot leans out to shoot round it
+const LEAN_SPEED = 1.15; // how fast it steps out and back, as a share of its speed
+const ARRIVE = 0.3; // metres: close enough to a spot to be there
+const RELOCATE_DISTANCE = 2.5; // metres: cover closer than this to where a bot already is does not count as "other" cover
 
 const HIPS_Y = 0.875;
 const PULL_END_STUN = 0.6; // seconds a grappled bot is dazed after being dragged to you
@@ -60,7 +77,7 @@ const limbCache = new Map();
 function limbGeometry(length, radius) {
   const key = `${length}|${radius}`;
   if (!limbCache.has(key)) {
-    const geometry = new THREE.CapsuleGeometry(radius, length, 4, 10);
+    const geometry = new THREE.CapsuleGeometry(radius, length, 2, 6);
     geometry.translate(0, -(length / 2 + radius), 0);
     limbCache.set(key, geometry);
   }
@@ -73,24 +90,27 @@ const GEO = {
   stripe: new THREE.BoxGeometry(0.405, 0.03, 0.235),
   head: new THREE.BoxGeometry(0.26, 0.26, 0.26),
   clock: new THREE.PlaneGeometry(0.2, 0.095),
-  stick: new THREE.CylinderGeometry(0.008, 0.008, 0.22, 5),
+  stick: new THREE.CylinderGeometry(0.008, 0.008, 0.22, 4),
   boot: new THREE.BoxGeometry(0.1, 0.09, 0.26),
   glove: new THREE.BoxGeometry(0.07, 0.1, 0.045),
-  coil: new THREE.TorusGeometry(0.06, 0.016, 6, 12),
-  hat: new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
-  brim: new THREE.CylinderGeometry(0.2, 0.2, 0.025, 12),
+  coil: new THREE.TorusGeometry(0.06, 0.016, 4, 8),
+  hat: new THREE.SphereGeometry(0.17, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2),
+  brim: new THREE.CylinderGeometry(0.2, 0.2, 0.025, 8),
   belt: new THREE.BoxGeometry(0.42, 0.06, 0.25),
   pouch: new THREE.BoxGeometry(0.07, 0.09, 0.06),
-  reel: new THREE.CylinderGeometry(0.15, 0.15, 0.06, 14),
+  reel: new THREE.CylinderGeometry(0.15, 0.15, 0.06, 8),
   reelCore: new THREE.CylinderGeometry(0.05, 0.05, 0.1, 8),
-  drill: new THREE.CylinderGeometry(0.045, 0.05, 0.42, 8),
+  drill: new THREE.CylinderGeometry(0.045, 0.05, 0.42, 6),
+  pistolSlide: new THREE.BoxGeometry(0.045, 0.2, 0.055), // its length runs along the forearm
+  pistolGrip: new THREE.BoxGeometry(0.04, 0.05, 0.11),
+  pistolBand: new THREE.BoxGeometry(0.05, 0.02, 0.06),
   chisel: new THREE.ConeGeometry(0.03, 0.2, 6),
-  cone: new THREE.ConeGeometry(0.14, 0.34, 12),
+  cone: new THREE.ConeGeometry(0.14, 0.34, 8),
   coneBase: new THREE.BoxGeometry(0.3, 0.025, 0.3),
   visor: new THREE.BoxGeometry(0.24, 0.07, 0.03),
   lightBar: new THREE.BoxGeometry(0.26, 0.022, 0.012),
-  wheel: new THREE.RingGeometry(0.12, 0.22, 16, 1, 0, 4.6),
-  blob: new THREE.CircleGeometry(0.5, 14),
+  wheel: new THREE.RingGeometry(0.12, 0.22, 10, 1, 0, 4.6),
+  blob: new THREE.CircleGeometry(0.5, 10),
 };
 GEO.blob.rotateX(-Math.PI / 2);
 
@@ -132,6 +152,19 @@ function getSharedMaterials() {
 }
 
 /** `boost` (>= 0) multiplies the distance-based growth: the flick forgiveness of fast view movement (see HoldableSystem.flickForgiveness). */
+/** Distance along a ray to a sphere, or -1. No growth with distance: a bot's bullet is as fat as it looks. */
+function rayHit(o, d, cx, cy, cz, r) {
+  const lx = cx - o.x;
+  const ly = cy - o.y;
+  const lz = cz - o.z;
+  const tca = lx * d.x + ly * d.y + lz * d.z;
+  const d2 = lx * lx + ly * ly + lz * lz - tca * tca;
+  if (d2 > r * r) return -1;
+  const t = tca - Math.sqrt(r * r - d2);
+  if (t >= 0) return t;
+  return tca >= 0 ? 0 : -1;
+}
+
 export function raySphere(o, d, cx, cy, cz, r, boost = 0) {
   const lx = cx - o.x;
   const ly = cy - o.y;
@@ -155,15 +188,18 @@ function wrapAngle(a) {
 
 
 const rand = (range) => range[0] + Math.random() * (range[1] - range[0]);
+const randInt = (range) => Math.floor(range[0] + Math.random() * (range[1] - range[0] + 1));
 
 export class Enemies {
-  constructor({ cfg, scene, world, fx, player }) {
+  /** `audio` is optional: with it bots' gunshots are heard. */
+  constructor({ cfg, scene, world, fx, player, audio = null }) {
     this.cfg = cfg.enemies;
     this.arenaHalf = cfg.arena.half;
     this.scene = scene;
     this.world = world;
     this.fx = fx;
     this.player = player;
+    this.audio = audio;
 
     this.alive = [];
     this.pool = {};
@@ -183,6 +219,9 @@ export class Enemies {
     this._aimU = new THREE.Vector3();
     this._aimN = new THREE.Vector3(); // horizontal vector 90 degrees right of the aim direction
     this._hideDir = new THREE.Vector3();
+    this._muzzle = new THREE.Vector3();
+    this._shotDir = new THREE.Vector3();
+    this._shotEnd = new THREE.Vector3();
     this._aimValid = false;
     this.tvx = 0; // steering output (target velocity)
     this.tvz = 0;
@@ -254,7 +293,7 @@ export class Enemies {
     lightBar.position.set(0, 0.47, 0.118);
     upper.add(lightBar);
     if (def.stripes) { // hi-vis reflective bands
-      const stripeMat = new THREE.MeshStandardMaterial({ color: 0xdfe3e6, roughness: 0.3, metalness: 0.6 });
+      const stripeMat = xboxMaterial({ color: 0xdfe3e6, roughness: 0.3, metalness: 0.6 });
       for (const y of [0.3, 0.42]) {
         const stripe = this._mesh(GEO.stripe, stripeMat);
         stripe.position.y = y;
@@ -302,6 +341,7 @@ export class Enemies {
     if (def.spool) this._addReel(upper, cableMat, mats);
 
     // Arms: shirt sleeve to the elbow, then a coax-cable forearm, gloved hand.
+    const gun = def.gun ? { ...this.cfg.gun, ...def.gun } : null; // the pistol it carries: the shared one with the type's own changes
     const arms = [];
     for (const side of [-1, 1]) {
       const shoulder = new THREE.Group();
@@ -314,6 +354,7 @@ export class Enemies {
       glove.position.y = -0.33;
       elbow.add(glove);
       if (def.jackhammer && side === 1) this._addJackhammer(elbow, mats);
+      if (gun && side === 1) this._addPistol(elbow, mats);
       shoulder.add(elbow);
       upper.add(shoulder);
       arms.push({ shoulder, elbow, side });
@@ -334,7 +375,7 @@ export class Enemies {
     this.scene.add(root);
 
     return {
-      key, def, root, visual, hips, upper, head, legs, arms, wheel, mats,
+      key, def, gun, root, visual, hips, upper, head, legs, arms, wheel, mats,
       pos: new THREE.Vector3(), prevPos: new THREE.Vector3(),
       vel: new THREE.Vector3(), knock: new THREE.Vector3(), dodgeDir: new THREE.Vector3(),
       hp: 0, speed: 0, radius: def.scale * 0.3, reach: 0.4 * def.scale + 0.9,
@@ -347,6 +388,10 @@ export class Enemies {
       dodgeT: 0, dodgeCd: 0, dodgeSign: 1, threat: 0, threatRolled: false, lean: 0,
       // cover
       state: 'advance', coverX: 0, coverZ: 0, coverT: 0, hideT: 0, coverCd: 0, crouch: 0, rush: 0,
+      // pistol
+      fireCd: 0, volley: 0, peekT: 0, peeks: 0, aimT: 0, aimBlend: 0, shooting: false, holdDist: 10,
+      checkT: 0, duckT: 0, duckRolled: false, los: false, losT: 0, strafeT: 0,
+      coverBox: null, peekOut: false, peekX: 0, peekZ: 0, homeX: 0, homeZ: 0, returning: false,
     };
   }
 
@@ -368,7 +413,7 @@ export class Enemies {
     mats.push(coneMat, bandMat);
     const cone = this._mesh(GEO.cone, coneMat);
     cone.position.y = 0.3;
-    const band = this._mesh(new THREE.CylinderGeometry(0.085, 0.1, 0.07, 12), bandMat);
+    const band = this._mesh(new THREE.CylinderGeometry(0.085, 0.1, 0.07, 8), bandMat);
     band.position.y = 0.3;
     const base = this._mesh(GEO.coneBase, coneMat);
     base.position.y = 0.13;
@@ -392,6 +437,23 @@ export class Enemies {
     reel.add(wound);
     reel.position.set(0, 0.32, -0.2);
     upper.add(reel);
+  }
+
+  /**
+   * A pistol in the right hand. The barrel runs along the forearm (so it points where the raised arm points) and the
+   * grip hangs from the hand.
+   */
+  _addPistol(elbow, mats) {
+    const metal = material(0x2a2d32, { roughness: 0.35, metalness: 0.7 });
+    const accent = material(0xffb800, { roughness: 0.5 });
+    mats.push(metal, accent);
+    const slide = this._mesh(GEO.pistolSlide, metal);
+    slide.position.set(0, -0.46, 0);
+    const grip = this._mesh(GEO.pistolGrip, metal);
+    grip.position.set(0, -0.35, -0.045);
+    const band = this._mesh(GEO.pistolBand, accent);
+    band.position.set(0, -0.4, 0);
+    elbow.add(slide, grip, band);
   }
 
   /** A pneumatic drill held in the right hand. */
@@ -437,6 +499,26 @@ export class Enemies {
     e.coverCd = 2 + Math.random() * 3; // do not duck behind cover the instant they spawn
     e.crouch = 0;
     e.rush = 0;
+    e.fireCd = 0;
+    e.volley = 0;
+    e.peekT = 0;
+    e.peeks = 0;
+    e.aimT = 0;
+    e.aimBlend = 0;
+    e.shooting = false;
+    e.checkT = 0;
+    e.duckT = 0;
+    e.duckRolled = false;
+    e.los = false;
+    e.losT = 0;
+    e.strafeT = rand(STRAFE_FLIP);
+    e.coverBox = null;
+    e.peekOut = false;
+    e.returning = false;
+    if (e.gun) {
+      e.holdDist = rand(e.gun.holdDistance);
+      e.volley = randInt(e.gun.burst);
+    }
     return e;
   }
 
@@ -511,6 +593,7 @@ export class Enemies {
   _step(e, dt, target) {
     const cfg = this.cfg;
     e.prevPos.copy(e.pos);
+    e.shooting = false; // set again by whatever steers it this tick
     if (e.pin) {
       this._stepPin(e, dt);
       return;
@@ -528,6 +611,7 @@ export class Enemies {
     e.dodgeT -= dt;
     e.coverCd -= dt;
     e.rush -= dt;
+    e.fireCd -= dt;
 
     const dxp = target.x - e.pos.x;
     const dzp = target.z - e.pos.z;
@@ -548,6 +632,8 @@ export class Enemies {
       e.threat = 0;
       e.threatRolled = false;
     }
+
+    if (active && e.gun && e.state === 'peek') this._checkDuck(e, dt);
 
     this.tvx = 0;
     this.tvz = 0;
@@ -593,8 +679,9 @@ export class Enemies {
 
     this._integrateVertical(e, dt);
 
-    const crouchTarget = e.state === 'hide' ? 1 : e.state === 'cover' ? 0.3 : 0;
+    const crouchTarget = e.state === 'hide' ? (e.returning ? 0.3 : 1) : e.state === 'cover' ? 0.3 : 0;
     e.crouch += (crouchTarget - e.crouch) * (1 - Math.exp(-9 * dt));
+    if (!e.shooting) e.aimT = 0; // the gun has to be raised again before it fires
   }
 
   /** Decide where to go this tick. Writes this.tvx / this.tvz. */
@@ -609,10 +696,21 @@ export class Enemies {
       // Crouched behind cover. Come out after a while, or ambush if the player gets close.
       hold = true;
       e.hideT -= dt;
-      if (e.hideT <= 0 || dist < cfg.ambushRange) {
-        e.state = 'advance';
-        e.rush = cfg.rushTime;
-        e.coverCd = rand(cfg.coverCooldown);
+      if (e.returning) {
+        if (!this._walkTo(e, e.homeX, e.homeZ)) e.returning = false; // back at its hiding place
+      } else if (e.gun) this._hideWithGun(e, dt, dist);
+      else if (e.hideT <= 0 || dist < cfg.ambushRange) this._rushOut(e);
+    } else if (e.state === 'peek') {
+      // Standing up from behind cover to shoot, then ducking again.
+      hold = true;
+      if (dist < cfg.ambushRange) this._rushOut(e);
+      else if (e.peekOut && this._walkTo(e, e.peekX, e.peekZ)) {
+        // still stepping out past the edge of a tall box
+      } else {
+        e.peekT -= dt;
+        const lastShot = this._shootStep(e, dt, false);
+        if (lastShot) e.peekT = Math.min(e.peekT, 0.3); // the burst is spent: back down in a moment
+        if (e.peekT <= 0) this._endPeek(e);
       }
     } else if (e.state === 'cover') {
       const cx = e.coverX - e.pos.x;
@@ -621,7 +719,8 @@ export class Enemies {
       e.coverT -= dt;
       if (cd < 0.45 || e.coverT <= 0) {
         e.state = 'hide';
-        e.hideT = rand(cfg.hideTime);
+        e.hideT = rand(cfg.hideTime) * (e.gun ? GUNNER_HIDE_SHARE : 1);
+        e.checkT = HIDE_CHECK;
       } else {
         sx = cx / cd;
         sz = cz / cd;
@@ -631,6 +730,7 @@ export class Enemies {
     if (hold) return;
 
     const advancing = e.state === 'advance';
+    if (advancing && e.gun && this._standAndShoot(e, dt, toX, toZ, dist)) return;
     if (e.detour > 0) { // stuck behind cover: slide sideways for a moment
       e.detour -= dt;
       const px = -sz * e.detourSign; // perpendicular to the intended direction
@@ -690,6 +790,251 @@ export class Enemies {
     if (dist <= e.reach && e.attackCd <= 0 && Math.abs(this.player.pos.y - e.pos.y) < 1.8) {
       e.windup = cfg.attackWindup;
     }
+  }
+
+  /* --------------------------- pistols and cover fire ---------------------- */
+
+  /** Leave cover and charge at the player. */
+  _rushOut(e) {
+    e.state = 'advance';
+    e.rush = this.cfg.rushTime;
+    e.coverCd = rand(this.cfg.coverCooldown);
+  }
+
+  /** The player's eye, in this._eye. */
+  _playerEye() {
+    const p = this.player.pos;
+    return this._eye.set(p.x, p.y + this.player.cfg.eyeHeight, p.z);
+  }
+
+  /** Where the pistol's muzzle is, in this._muzzle: out in front of the right hand, at the height of a bot that is `crouch` crouched. */
+  _muzzleOrigin(e, crouch, x = e.pos.x, z = e.pos.z) {
+    const s = e.def.scale;
+    const sin = Math.sin(e.yaw);
+    const cos = Math.cos(e.yaw);
+    return this._muzzle.set(
+      x + (0.2 * cos + 0.5 * sin) * s,
+      e.pos.y + (e.gun.muzzleHeight - 0.45 * crouch) * s,
+      z + (-0.2 * sin + 0.5 * cos) * s,
+    );
+  }
+
+  /** The point a bot aims at: the player's chest. */
+  _chest(out) {
+    const p = this.player.pos;
+    return out.set(p.x, p.y + this.player.cfg.eyeHeight * 0.72, p.z);
+  }
+
+  /** Is there a clear line from where a bot's muzzle would be (at this crouch, and standing at (x, z)) to the player? */
+  _hasLine(e, crouch, x = e.pos.x, z = e.pos.z) {
+    const from = this._muzzleOrigin(e, crouch, x, z);
+    const to = this._chest(this._hideDir);
+    to.sub(from);
+    const distance = to.length();
+    if (distance < 1e-3) return true;
+    to.divideScalar(distance);
+    return this.world.raycast(from, to, distance) >= distance - 0.5;
+  }
+
+  /** Does cover still hide this bot? A real ray from the player's eye to where its crouched head is. */
+  _isHidden(e) {
+    const s = e.def.scale;
+    const eye = this._playerEye();
+    this._hideDir.set(e.pos.x - eye.x, e.pos.y + (HEAD.y - HEAD.drop) * s + 0.12 - eye.y, e.pos.z - eye.z);
+    const distance = this._hideDir.length();
+    this._hideDir.divideScalar(distance);
+    return this.world.raycast(eye, this._hideDir, distance) < distance - 0.3;
+  }
+
+  /** Down behind cover with a pistol: check the cover still works, and when it is time, stand up and shoot. */
+  _hideWithGun(e, dt, dist) {
+    if (dist < this.cfg.ambushRange) { // the player is on top of it: ambush like the others
+      this._rushOut(e);
+      return;
+    }
+    e.checkT -= dt;
+    if (e.checkT <= 0) {
+      e.checkT = HIDE_CHECK;
+      if (!this._isHidden(e) && !this._seekCover(e, true)) { // flanked, and no other cover: fight in the open
+        this._rushOut(e);
+        return;
+      }
+      if (e.state !== 'hide') return; // it is running to better cover
+    }
+    if (e.hideT > 0) return;
+    e.peekOut = false;
+    if (!this._hasLine(e, 0)) { // the box is too tall to shoot over: lean out past its edge, or give up the cover
+      if (!this._leanSpot(e)) {
+        this._rushOut(e);
+        return;
+      }
+      e.peekOut = true;
+      e.homeX = e.pos.x;
+      e.homeZ = e.pos.z;
+    }
+    e.state = 'peek';
+    e.peekT = rand(e.gun.peekTime);
+    e.volley = randInt(e.gun.burst);
+    e.aimT = 0;
+    e.fireCd = 0;
+    e.duckT = 0;
+    e.duckRolled = false;
+  }
+
+  /** Walk toward (x, z), writing this.tvx / this.tvz. Returns false once it is there. */
+  _walkTo(e, x, z) {
+    const dx = x - e.pos.x;
+    const dz = z - e.pos.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance < ARRIVE) return false;
+    const speed = e.speed * LEAN_SPEED;
+    this.tvx = (dx / distance) * speed;
+    this.tvz = (dz / distance) * speed;
+    return true;
+  }
+
+  /**
+   * Where to stand to shoot round the edge of the box a bot is behind: just past either side, wherever it is free and
+   * gives a clear line to the player. Writes e.peekX / e.peekZ and returns true, or returns false if neither side does.
+   */
+  _leanSpot(e) {
+    const box = e.coverBox;
+    if (!box) return false;
+    const p = this.player.pos;
+    let nx = (box.minX + box.maxX) / 2 - p.x; // from the player toward the box
+    let nz = (box.minZ + box.maxZ) / 2 - p.z;
+    const length = Math.hypot(nx, nz) || 1;
+    nx /= length;
+    nz /= length;
+    const halfWidth = Math.abs(nz) * ((box.maxX - box.minX) / 2) + Math.abs(nx) * ((box.maxZ - box.minZ) / 2); // the box's half width across that line
+    const lateral = halfWidth + e.radius + LEAN_CLEARANCE;
+    const first = Math.random() < 0.5 ? 1 : -1;
+    for (const side of [first, -first]) {
+      const x = (box.minX + box.maxX) / 2 + nx * ((Math.abs(nx) * (box.maxX - box.minX) / 2) + (Math.abs(nz) * (box.maxZ - box.minZ) / 2) + e.radius + 0.35) - nz * side * lateral;
+      const z = (box.minZ + box.maxZ) / 2 + nz * ((Math.abs(nx) * (box.maxX - box.minX) / 2) + (Math.abs(nz) * (box.maxZ - box.minZ) / 2) + e.radius + 0.35) + nx * side * lateral;
+      if (this.world.isBlocked(x, z, e.radius, this.world.groundHeight(x, z))) continue;
+      if (!this._hasLine(e, 0, x, z)) continue;
+      e.peekX = x;
+      e.peekZ = z;
+      return true;
+    }
+    return false;
+  }
+
+  /** Back down behind the box; after enough peeks, go and find other cover. */
+  _endPeek(e) {
+    e.state = 'hide';
+    e.hideT = rand(this.cfg.hideTime) * GUNNER_HIDE_SHARE;
+    e.checkT = HIDE_CHECK;
+    e.returning = e.peekOut; // leaning out round a box: step back to where it was hiding
+    e.peekOut = false;
+    e.peeks -= 1;
+    if (e.peeks <= 0 && !this._seekCover(e, true)) e.peeks = randInt(e.gun.peeks); // nowhere else to go: keep at it
+  }
+
+  /** Is the player's aim line on this bot long enough to be a threat? If so it may duck. */
+  _checkDuck(e, dt) {
+    if (!this._aimValid) {
+      e.duckT = 0;
+      e.duckRolled = false;
+      return;
+    }
+    const c = this.bodyCenter(e, this._tmp);
+    const o = this._aimO;
+    const d = this._aimD;
+    const vx = c.x - o.x;
+    const vy = c.y - o.y;
+    const vz = c.z - o.z;
+    const along = vx * d.x + vy * d.y + vz * d.z;
+    const perp2 = vx * vx + vy * vy + vz * vz - along * along;
+    const limit = this.cfg.dodgeAimRadius * e.def.scale;
+    if (along < 2.5 || along > 60 || perp2 > limit * limit) {
+      e.duckT = 0;
+      e.duckRolled = false;
+      return;
+    }
+    e.duckT += dt;
+    if (e.duckT < this.cfg.dodgeReaction * 0.8 || e.duckRolled) return;
+    e.duckRolled = true;
+    if (Math.random() < e.gun.duckChance) this._endPeek(e);
+  }
+
+  /**
+   * A bot with a pistol in range of the player, with a clear line, stops and shoots from where it is (or runs for cover).
+   * Returns true when it did, and has set its own movement; false means carry on advancing.
+   */
+  _standAndShoot(e, dt, toX, toZ, dist) {
+    const gun = e.gun;
+    if (dist > e.holdDist || dist < gun.minRange || !this.player.alive) return false;
+    e.losT -= dt;
+    if (e.losT <= 0) {
+      e.losT = LINE_CHECK;
+      e.los = this._hasLine(e, e.crouch);
+    }
+    if (!e.los) return false;
+
+    if (e.coverCd <= 0 && Math.random() < gun.coverSeekRate * dt && this._seekCover(e)) return true; // it runs for cover next tick
+    e.strafeT -= dt;
+    if (e.strafeT <= 0) {
+      e.strafeT = rand(STRAFE_FLIP);
+      e.orbit = -e.orbit;
+    }
+    const speed = e.speed * gun.strafeSpeed;
+    this.tvx = -toZ * e.orbit * speed;
+    this.tvz = toX * e.orbit * speed;
+    this._shootStep(e, dt, true);
+    return true;
+  }
+
+  /**
+   * Raise the gun, and once it is up fire the burst, a shot at a time. `refill` starts a new burst after a pause (shooting
+   * from the open); otherwise the caller ends the shooting when this returns true (it fired the last round of a burst).
+   */
+  _shootStep(e, dt, refill) {
+    const gun = e.gun;
+    e.shooting = true;
+    if (e.aimT < gun.aimTime) {
+      e.aimT += dt;
+      return false;
+    }
+    if (e.fireCd > 0 || e.volley <= 0 || !this.player.alive) return false;
+    this._fire(e);
+    e.volley -= 1;
+    e.fireCd = gun.interval;
+    if (e.volley > 0) return false;
+    if (refill) {
+      e.volley = randInt(gun.burst);
+      e.fireCd = rand(gun.burstPause);
+    }
+    return true;
+  }
+
+  /** One shot: toward the player's chest with a little error, stopped by walls, with a tracer, a spark and a bang. */
+  _fire(e) {
+    const gun = e.gun;
+    const player = this.player;
+    const from = this._muzzleOrigin(e, e.crouch);
+    const dir = this._chest(this._shotDir).sub(from);
+    const toPlayer = dir.length() || 1;
+    dir.divideScalar(toPlayer);
+    dir.x += (Math.random() * 2 - 1) * gun.spread;
+    dir.y += (Math.random() * 2 - 1) * gun.spread;
+    dir.z += (Math.random() * 2 - 1) * gun.spread;
+    dir.normalize();
+
+    const eye = player.cfg.eyeHeight;
+    const wall = Math.min(this.world.raycast(from, dir, gun.range), gun.range);
+    const body = rayHit(from, dir, player.pos.x, player.pos.y + eye * 0.55, player.pos.z, Math.max(player.cfg.radius + 0.1, eye * 0.2));
+    const head = rayHit(from, dir, player.pos.x, player.pos.y + eye - 0.12 * (eye / 1.65), player.pos.z, 0.13 * (eye / 1.65));
+    const hit = [body, head].filter((t) => t >= 0).reduce((nearest, t) => Math.min(nearest, t), Infinity);
+    const struck = hit < wall;
+    const end = this._shotEnd.copy(from).addScaledVector(dir, struck ? hit : wall);
+
+    this.fx.tracers.spawn(from, end, gun.tracerColor, TRACER_SPEED, 0.03);
+    this.fx.particles.burst(from, SHOT_SPARK, 3, 2.5, 0.05, 0.12, 0);
+    if (!struck && wall < gun.range) this.fx.particles.burst(end, 0xffc04d, 3, 3, 0.05, 0.18, 8); // chips off whatever it hit
+    this.audio?.shootAt('pistol', toPlayer);
+    if (struck) player.takeDamage(gun.damage, e.pos);
   }
 
   /** Jump if what blocks us is low enough to clear (a platform edge or low cover). */
@@ -843,9 +1188,9 @@ export class Enemies {
    * Find the nearest tall box whose far side hides us from the player, and head
    * there. "Hides" is checked with a real raycast from the player's eye to where
    * our crouched head would be, so low boxes that cannot hide a bot are skipped.
-   * Returns true if a spot was found.
+   * Returns true if a spot was found. With `other`, the box it is already behind does not count.
    */
-  _seekCover(e) {
+  _seekCover(e, other = false) {
     const p = this.player.pos;
     const s = e.def.scale;
     this._eye.set(p.x, p.y + this.player.cfg.eyeHeight, p.z);
@@ -853,6 +1198,7 @@ export class Enemies {
     let bestX = 0;
     let bestZ = 0;
     let bestDist = this.cfg.coverRadius;
+    let bestSolid = null;
     let found = false;
 
     for (const solid of this.world.solids) {
@@ -872,6 +1218,7 @@ export class Enemies {
       const hz = Math.max(-half, Math.min(half, cz + nz * (extent + e.radius + 0.35)));
       const dist = Math.hypot(hx - e.pos.x, hz - e.pos.z);
       if (dist >= bestDist) continue;
+      if (other && dist < RELOCATE_DISTANCE) continue; // moving on: not the box it is already behind
       const floor = this.world.groundHeight(hx, hz);
       if (this.world.isBlocked(hx, hz, e.radius, floor)) continue; // spot is inside something
 
@@ -882,6 +1229,7 @@ export class Enemies {
       bestDist = dist;
       bestX = hx;
       bestZ = hz;
+      bestSolid = solid;
       found = true;
     }
     if (!found) return false;
@@ -890,6 +1238,10 @@ export class Enemies {
     e.coverZ = bestZ;
     e.coverT = this.cfg.coverTimeout;
     e.windup = 0;
+    e.coverBox = bestSolid;
+    e.returning = false;
+    e.peekOut = false;
+    if (e.gun) e.peeks = randInt(e.gun.peeks);
     return true;
   }
 
@@ -921,6 +1273,7 @@ export class Enemies {
     e.knock.x += opts.dirX * push;
     e.knock.z += opts.dirZ * push;
     if (e.windup > 0 && opts.stun > 0.2) e.windup = 0; // a heavy hit cancels their attack
+    if (e.state === 'peek' && e.hp > 0) this._endPeek(e); // hit while standing up to shoot: back down
 
     if (e.hp <= 0) {
       this._kill(e);
@@ -1081,12 +1434,17 @@ export class Enemies {
       const raise = -(windupP * 1.2 + e.lunge * 1.6) - 0.9 * e.air - 0.5 * crouch;
       e.visual.position.z = (e.lunge * 0.35 - windupP * 0.1) * s;
 
+      // Pistol: the gun arm comes up level, the other hand helps a little.
+      e.aimBlend += ((e.shooting ? 1 : 0) - e.aimBlend) * (1 - Math.exp(-10 * dt));
+      const aim = e.gun ? e.aimBlend : 0;
+
       const t = time + e.phase;
       for (const arm of e.arms) {
-        const swing = -sw * arm.side * 0.7 * amp * walkWeight;
-        arm.shoulder.rotation.x = swing + raise;
-        arm.shoulder.rotation.z = arm.side * (0.1 + Math.sin(t * 3 + arm.side) * 0.05); // loose cable sway
-        arm.elbow.rotation.x = -0.3 * amp - 0.9 * crouch + Math.sin(t * 5 + arm.side * 2) * 0.1 + raise * 0.4;
+        const aimRaise = aim * (arm.side === 1 ? 1.45 : 0.5);
+        const swing = -sw * arm.side * 0.7 * amp * walkWeight * (1 - aim);
+        arm.shoulder.rotation.x = swing + raise - aimRaise;
+        arm.shoulder.rotation.z = arm.side * (0.1 + Math.sin(t * 3 + arm.side) * 0.05) * (1 - aim * 0.7); // loose cable sway
+        arm.elbow.rotation.x = -0.3 * amp - 0.9 * crouch * (1 - aim) + Math.sin(t * 5 + arm.side * 2) * 0.1 * (1 - aim) + raise * 0.4 - 0.15 * aimRaise;
       }
 
       // Hit flash: white emissive, only touched while it changes.

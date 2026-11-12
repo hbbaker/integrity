@@ -46,11 +46,11 @@ function buildFiberReel() {
   const leftArm = at(makeArm(-1, Math.PI / 2, [-0.25, -0.5, 1]), -0.052, -0.11, 0.06);
 
   const spool = new THREE.Group(); // spins about the X axis
-  const fibre = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.07, 28), MAT.trace); // wound fibre: its traces glow
+  const fibre = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.07, 12), MAT.trace); // wound fibre: its traces glow
   fibre.rotation.z = Math.PI / 2;
   spool.add(fibre);
   for (const side of [-1, 1]) {
-    const flange = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.078, 0.01, 28), MAT.steel);
+    const flange = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.078, 0.01, 12), MAT.steel);
     flange.rotation.z = Math.PI / 2;
     flange.position.x = side * 0.04;
     spool.add(flange);

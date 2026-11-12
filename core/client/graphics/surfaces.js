@@ -1,8 +1,8 @@
 /*
  * Procedural surface materials: for each surface three canvas images are drawn together, so they line up:
  *   colour    the paint, grain and wear
- *   height    a grey height map (white = raised, black = a groove). Used as a bump map, so lighting catches panel
- *             seams, rivets, brushed grain and weave as real relief instead of a flat picture
+ *   height    a grey height map (white = raised, black = a groove). Patterns still draw it, but the original-Xbox look
+ *             does not use it: no bump map is made from it
  *   glow      light that shines by itself (circuit traces, seam lights, LEDs); black where nothing glows
  * Nothing is loaded from disk: every pattern is drawn with canvas strokes, deterministically (the same call always
  * draws the same pattern), and the textures are cached and shared between materials.
@@ -19,11 +19,13 @@
  */
 
 import * as THREE from 'three';
+import { xboxMaterial } from './materials.js';
 
 const DEFAULT_GLOW_COLORS = ['#00f0ff', '#ff2bd6', '#3dff9a', '#8a4dff']; // fibre-optic cyan, magenta, lime, violet
 const GRAIN_STREAKS = 340;
 const STIPPLE_DOTS = 1100;
 const SPECKLES = 2600;
+const TEXTURE_SIZE = 128; // patterns are drawn at `size` (256) so their layout stays right, then shrunk to this: small, soft textures
 const cache = new Map();
 
 /** A small deterministic random generator, seeded from text. */
@@ -291,8 +293,16 @@ const PATTERNS = {
 
 /* ------------------------------- textures -------------------------------- */
 
+function shrink(canvas, targetSize) {
+  if (canvas.width <= targetSize) return canvas;
+  const small = makeCanvas(targetSize);
+  small.ctx.drawImage(canvas, 0, 0, targetSize, targetSize);
+  return small.canvas;
+}
+
 function toTexture(canvas, { colour, repeat }) {
-  const texture = new THREE.CanvasTexture(canvas);
+  const texture = new THREE.CanvasTexture(shrink(canvas, TEXTURE_SIZE));
+  texture.anisotropy = 1;
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(repeat, repeat);
   if (colour) texture.colorSpace = THREE.SRGBColorSpace;
@@ -300,7 +310,7 @@ function toTexture(canvas, { colour, repeat }) {
 }
 
 /**
- * The textures of one surface: { map, bump, emissive }. `emissive` is null when the pattern has nothing that glows.
+ * The textures of one surface: { map, emissive }. `emissive` is null when the pattern has nothing that glows.
  * Cached by every option, so the same surface is drawn once.
  */
 export function surfaceTextures(kind, { color = '#808890', glow = DEFAULT_GLOW_COLORS, size = 256, repeat = 1 } = {}) {
@@ -313,7 +323,6 @@ export function surfaceTextures(kind, { color = '#808890', glow = DEFAULT_GLOW_C
   pattern(layers, seededRandom(`${kind}${color}`), glowColors);
   const textures = {
     map: toTexture(layers.colour.canvas, { colour: true, repeat }),
-    bump: toTexture(layers.height.canvas, { colour: false, repeat }),
     emissive: layers.hasGlow ? toTexture(layers.glow.canvas, { colour: true, repeat }) : null,
   };
   cache.set(key, textures);
@@ -321,18 +330,18 @@ export function surfaceTextures(kind, { color = '#808890', glow = DEFAULT_GLOW_C
 }
 
 /**
- * A new standard material with a surface's colour, height (bump) and glow maps. The textures are shared; the material
+ * A new Phong material with a surface's colour and glow maps. The textures are shared; the material
  * is yours (a game may flash its emissive colour on a hit, so pass `glowing: false` for those: a glow map would
  * limit the flash to the glowing marks).
  *
- * @param options { color, glow (a css colour or a list of them), size, repeat, roughness, metalness,
- *                  bumpScale (how deep the height map reads), emissiveIntensity, glowing }
+ * @param options { color, glow (a css colour or a list of them), size, repeat, roughness, metalness (see xboxMaterial),
+ *                  emissiveIntensity, glowing; bumpScale is accepted and ignored }
  */
 export function surfaceMaterial(kind, {
-  color = '#808890', glow, size = 256, repeat = 1, roughness = 0.5, metalness = 0.5, bumpScale = 2, emissiveIntensity = 1.4, glowing = true,
+  color = '#808890', glow, size = 256, repeat = 1, roughness = 0.5, metalness = 0.5, emissiveIntensity = 1.4, glowing = true,
 } = {}) {
   const textures = surfaceTextures(kind, { color, glow, size, repeat });
-  const material = new THREE.MeshStandardMaterial({ map: textures.map, bumpMap: textures.bump, bumpScale, roughness, metalness });
+  const material = xboxMaterial({ map: textures.map, roughness, metalness });
   if (glowing && textures.emissive) {
     material.emissive = new THREE.Color(0xffffff);
     material.emissiveMap = textures.emissive;

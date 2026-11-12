@@ -26,13 +26,13 @@ const BUTT_PLATE = [[0.49, 0.03], [0.505, 0.03], [0.52, -0.1], [0.5, -0.108], [0
 
 function buildDrum() {
   const drum = new THREE.Group();
-  const shell = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 28), MAT.alloy);
+  const shell = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 12), MAT.alloy);
   shell.rotation.z = Math.PI / 2;
   const coreGlow = glowMaterial(0xffffff, 1.6);
-  const window3 = new THREE.Mesh(new THREE.TorusGeometry(0.083, 0.006, 8, 32), coreGlow);
+  const window3 = new THREE.Mesh(new THREE.TorusGeometry(0.083, 0.006, 5, 14), coreGlow);
   window3.rotation.y = Math.PI / 2;
   window3.position.x = -0.031;
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.075, 16), MAT.steel);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.075, 8), MAT.steel);
   hub.rotation.z = Math.PI / 2;
   drum.add(shell, window3, hub);
   for (let i = 0; i < 10; i++) { // nail slots round the rim

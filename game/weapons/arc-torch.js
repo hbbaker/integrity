@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { BeamWeapon } from '../../core/client/combat/beam-weapon.js';
 import { MAT, makeArm } from './shared.js';
+import { xboxMaterial } from '../../core/client/graphics/materials.js';
 
 /** The numbers: damage, speed, ammo, recoil, sights. */
 export const config = {
@@ -34,7 +35,7 @@ export function glowColor(power, out) {
 }
 
 /** Lathe from [radius, alongAxis] points, with the axis rotated to run toward -Z. */
-function lathe(points, segments = 32) {
+function lathe(points, segments = 12) {
   const geometry = new THREE.LatheGeometry(points.map(([r, y]) => new THREE.Vector2(r, y)), segments);
   geometry.rotateX(-Math.PI / 2);
   return geometry;
@@ -61,7 +62,7 @@ function createPulseTexture() {
 }
 
 function glowMaterial(intensity) {
-  return new THREE.MeshStandardMaterial({
+  return xboxMaterial({
     color: 0x07130f, emissive: GREEN.clone(), emissiveIntensity: intensity, roughness: 0.35, metalness: 0.2,
   });
 }
@@ -82,7 +83,7 @@ export function buildArcTorch() {
 
   const bodyMat = MAT.alloy; // brushed aluminium casing
   const darkMat = MAT.gunmetal;
-  const glassMat = new THREE.MeshPhysicalMaterial({
+  const glassMat = xboxMaterial({
     color: 0xaaffe0, transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0, clearcoat: 1,
   });
 
@@ -98,7 +99,7 @@ export function buildArcTorch() {
 
   // Glowing emitter orb with three curved prongs that slowly spin around it.
   const orbMat = glowMaterial(3);
-  const orb = at(new THREE.Mesh(new THREE.SphereGeometry(0.034, 20, 14), orbMat), 0, 0, -0.205);
+  const orb = at(new THREE.Mesh(new THREE.SphereGeometry(0.034, 10, 8), orbMat), 0, 0, -0.205);
   const prongMat = glowMaterial(1.5);
   const prongs = new THREE.Group();
   prongs.position.z = 0;
@@ -106,7 +107,7 @@ export function buildArcTorch() {
     const a = (i / 3) * Math.PI * 2;
     const point = (r, z) => new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, z);
     const curve = new THREE.CatmullRomCurve3([point(0.045, -0.17), point(0.088, -0.23), point(0.05, -0.335)]);
-    prongs.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.0065, 6), prongMat));
+    prongs.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 10, 0.0065, 4), prongMat));
   }
   root.add(orb, prongs);
 
@@ -114,14 +115,14 @@ export function buildArcTorch() {
   const coilSpecs = [[-0.09, 0.066], [-0.04, 0.064], [0.01, 0.057], [0.06, 0.049], [0.1, 0.043]]; // [along, radius]
   const coils = coilSpecs.map(([along, radius]) => {
     const mat = glowMaterial(1);
-    const ring = at(new THREE.Mesh(new THREE.TorusGeometry(radius + 0.004, 0.0075, 8, 28), mat), 0, 0, -along);
+    const ring = at(new THREE.Mesh(new THREE.TorusGeometry(radius + 0.004, 0.0075, 5, 14), mat), 0, 0, -along);
     root.add(ring);
     return mat;
   });
 
   // A vein spiralling along the body with pulses of light travelling down it.
   const pulseTexture = createPulseTexture();
-  const veinMat = new THREE.MeshStandardMaterial({
+  const veinMat = xboxMaterial({
     color: 0x07130f, emissive: GREEN.clone(), emissiveMap: pulseTexture, emissiveIntensity: 2.2, roughness: 0.4,
   });
   const veinPoints = [];
@@ -132,18 +133,18 @@ export function buildArcTorch() {
     const r = 0.06 - t * 0.014 + 0.0015;
     veinPoints.push(new THREE.Vector3(Math.cos(angle) * r, Math.sin(angle) * r, -along));
   }
-  root.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(veinPoints), 120, 0.0038, 6), veinMat));
+  root.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(veinPoints), 60, 0.0038, 4), veinMat));
 
   // Glass energy chamber on the near (left) side. The core's length shows the charge.
   const chamber = new THREE.Group();
   chamber.position.set(-0.066, 0.012, -0.02);
   chamber.rotation.x = Math.PI / 2; // capsule axis -> along the barrel
-  chamber.add(new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 0.085, 6, 14), glassMat));
+  chamber.add(new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 0.085, 3, 8), glassMat));
   const coreMat = glowMaterial(2);
-  const core = new THREE.Mesh(new THREE.CapsuleGeometry(0.0125, 0.07, 6, 12), coreMat);
+  const core = new THREE.Mesh(new THREE.CapsuleGeometry(0.0125, 0.07, 3, 8), coreMat);
   chamber.add(core);
-  chamber.add(at(new THREE.Mesh(new THREE.TorusGeometry(0.021, 0.0045, 6, 16), darkMat), 0, 0.05, 0).rotateX(Math.PI / 2));
-  chamber.add(at(new THREE.Mesh(new THREE.TorusGeometry(0.021, 0.0045, 6, 16), darkMat), 0, -0.05, 0).rotateX(Math.PI / 2));
+  chamber.add(at(new THREE.Mesh(new THREE.TorusGeometry(0.021, 0.0045, 4, 10), darkMat), 0, 0.05, 0).rotateX(Math.PI / 2));
+  chamber.add(at(new THREE.Mesh(new THREE.TorusGeometry(0.021, 0.0045, 4, 10), darkMat), 0, -0.05, 0).rotateX(Math.PI / 2));
   root.add(chamber);
 
   // Swept, curved grip, trigger guard, tail fins.
@@ -151,23 +152,23 @@ export function buildArcTorch() {
     new THREE.Vector3(0, -0.04, 0.05), new THREE.Vector3(0, -0.1, 0.08), new THREE.Vector3(0, -0.17, 0.1),
   ]);
   root.add(
-    new THREE.Mesh(new THREE.TubeGeometry(gripCurve, 16, 0.028, 12), bodyMat),
-    at(new THREE.Mesh(new THREE.SphereGeometry(0.031, 14, 10), bodyMat), 0, -0.17, 0.1),
+    new THREE.Mesh(new THREE.TubeGeometry(gripCurve, 8, 0.028, 6), bodyMat),
+    at(new THREE.Mesh(new THREE.SphereGeometry(0.031, 8, 6), bodyMat), 0, -0.17, 0.1),
   );
-  const guard = at(new THREE.Mesh(new THREE.TorusGeometry(0.036, 0.0045, 6, 16, Math.PI), darkMat), 0, -0.06, 0.0);
+  const guard = at(new THREE.Mesh(new THREE.TorusGeometry(0.036, 0.0045, 4, 8, Math.PI), darkMat), 0, -0.06, 0.0);
   guard.rotation.set(0, Math.PI / 2, Math.PI);
-  const trigger = at(new THREE.Mesh(new THREE.CapsuleGeometry(0.004, 0.02, 4, 6), darkMat), 0, -0.052, 0.01);
+  const trigger = at(new THREE.Mesh(new THREE.CapsuleGeometry(0.004, 0.02, 2, 4), darkMat), 0, -0.052, 0.01);
   root.add(guard, trigger);
   for (const side of [-1, 1]) {
-    const fin = at(new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.13, 12), bodyMat), side * 0.048, 0.035, 0.15);
+    const fin = at(new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.13, 8), bodyMat), side * 0.048, 0.035, 0.15);
     fin.rotation.set(Math.PI / 2, 0, 0);
     fin.rotation.y = side * 0.35;
     root.add(fin);
   }
 
   // Sights for aiming down them: a rear ring and a front fin, tops lined up at y=0.088.
-  const ringSight = at(new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.003, 6, 18), darkMat), 0, 0.088, 0.07);
-  const ringPost = at(new THREE.Mesh(new THREE.CapsuleGeometry(0.0035, 0.015, 4, 6), darkMat), 0, 0.066, 0.07);
+  const ringSight = at(new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.003, 4, 10), darkMat), 0, 0.088, 0.07);
+  const ringPost = at(new THREE.Mesh(new THREE.CapsuleGeometry(0.0035, 0.015, 2, 4), darkMat), 0, 0.066, 0.07);
   const fin = at(new THREE.Mesh(new THREE.ConeGeometry(0.006, 0.036, 8), darkMat), 0, 0.07, -0.265);
   root.add(ringSight, ringPost, fin);
 

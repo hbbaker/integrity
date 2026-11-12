@@ -19,6 +19,8 @@ export const WEAPON_ICONS = {
   reel: `<svg viewBox="0 0 100 50"><rect x="10" y="16" width="58" height="20" rx="5" fill="#ffd800" ${stroke}/><circle cx="38" cy="14" r="15" fill="#7a3cff" ${stroke}/><circle cx="38" cy="14" r="6" fill="#cfd3d6" ${stroke}/><rect x="66" y="20" width="24" height="10" rx="3" fill="#9aa0a6" ${stroke}/><rect x="22" y="34" width="14" height="14" rx="3" fill="#e3242b" ${stroke}/></svg>`,
   drill: `<svg viewBox="0 0 100 50"><rect x="6" y="16" width="58" height="18" rx="6" fill="#ff6a00" ${stroke}/><path d="M64 14 L94 25 L64 36 Z" fill="#9aa0a6" ${stroke}/><rect x="30" y="32" width="10" height="14" rx="3" fill="#222" ${stroke}/></svg>`,
   stopsign: `<svg viewBox="0 0 100 50"><rect x="44" y="26" width="8" height="22" fill="#cfd3d6" ${stroke}/><path d="M36 2h16l12 12v14l-12 12H36L24 28V14z" transform="translate(-4 -1)" fill="#e3242b" ${stroke}/></svg>`,
+  beacon: `<svg viewBox="0 0 100 50"><rect x="34" y="20" width="32" height="26" rx="5" fill="#2a2f36" ${stroke}/><rect x="34" y="30" width="32" height="7" fill="#ff7a1a" ${stroke}/><rect x="40" y="12" width="20" height="9" rx="3" fill="#00f0ff" ${stroke}/><path d="M62 12V2" ${stroke} fill="none"/></svg>`,
+  revolver: `<svg viewBox="0 0 100 50"><rect x="30" y="12" width="64" height="9" rx="3" fill="#cfd3d6" ${stroke}/><circle cx="34" cy="20" r="11" fill="#ffd800" ${stroke}/><rect x="16" y="10" width="22" height="14" rx="4" fill="#9aa0a6" ${stroke}/><path d="M20 24l8 0 6 22-14 0z" fill="#e3242b" ${stroke}/></svg>`,
   smg: `<svg viewBox="0 0 100 50"><rect x="6" y="12" width="72" height="16" rx="4" fill="#7a3cff" ${stroke}/><rect x="40" y="26" width="12" height="20" rx="3" fill="#ffd800" ${stroke}/><rect x="64" y="26" width="10" height="18" rx="3" fill="#e3242b" ${stroke}/><rect x="78" y="14" width="16" height="10" rx="3" fill="#9aa0a6" ${stroke}/></svg>`,
 };
 
@@ -37,7 +39,7 @@ export class Hud {
       ammoMag: $('ammo-mag'), ammoReserve: $('ammo-reserve'), ammoSep: $('ammo-sep'), reload: $('reload-indicator'),
       crosshair: $('crosshair'), scope: $('scope'), hitmarker: $('hitmarker'),
       wave: $('wave'), kills: $('kills'), banner: $('banner'),
-      vignette: $('vignette'), numbers: $('damage-numbers'),
+      root: $('hud'), vignette: $('vignette'), numbers: $('damage-numbers'), suitHolo: $('suit-holo'), prompt: $('prompt'),
       start: $('overlay-start'), modeSandbox: $('mode-sandbox'), modeWaves: $('mode-waves'), modeMultiplayer: $('mode-multiplayer'), modeDig: $('mode-dig'), resume: $('start-resume'), toMenu: $('start-menu'), deadMenu: $('dead-menu'), startTitle: $('start-sub'), waveGroup: $('wave-pill'), modeButtons: $('mode-buttons'), pauseButtons: $('pause-buttons'), dead: $('overlay-dead'), deadWave: $('dead-wave'), deadKills: $('dead-kills'),
     };
 
@@ -147,6 +149,23 @@ export class Hud {
     this.el.modeButtons.style.display = inGame ? 'none' : 'flex';
     this.el.pauseButtons.style.display = inGame ? 'flex' : 'none';
     this.el.startTitle.textContent = inGame ? 'PAUSED' : 'CHOOSE A MODE';
+  }
+
+  /** Dress the HUD as a suit's holographic display (cyan glow, scanlines, a ring round the view). */
+  setSuitMode(on) {
+    this.el.root.classList.toggle('suit-hud', on);
+    if (!on) return;
+    this.el.suitHolo.classList.remove('boot');
+    void this.el.suitHolo.offsetWidth; // restart the boot-up flash
+    this.el.suitHolo.classList.add('boot');
+  }
+
+  /** A hint near the crosshair ("V  ENTER SUIT"); null hides it. */
+  setPrompt(text) {
+    if (this.last.prompt === text) return;
+    this.last.prompt = text;
+    this.el.prompt.textContent = text ?? '';
+    this.el.prompt.style.display = text ? 'block' : 'none';
   }
 
   setMode(mode) {

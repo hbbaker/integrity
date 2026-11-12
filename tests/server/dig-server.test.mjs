@@ -58,6 +58,10 @@ const pos = (x, m) => ({ t: 's', x: spawnWorld(m).x, y: 0, z: spawnWorld(m).z, y
 [a, b, c].forEach((x, i) => send(x, pos(x, maps[i]))); await wait(100);
 check(b.inbox.some((m) => m.from === a.id && m.m?.t === 's'), 'pose messages are relayed between players');
 check(!a.inbox.some((m) => m.from === a.id), 'no echo of your own pose');
+clear(a, b, c);
+send(a, { ...pos(a, maps[0]), su: 3, sx: 4.5, sz: -2.25, sw: 1.5, sc: '01230' }); await wait(100);
+const suited = b.inbox.find((m) => m.from === a.id && m.m?.t === 's')?.m;
+check(suited && suited.su === 3 && suited.sx === 4.5 && suited.sz === -2.25 && suited.sw === 1.5 && suited.sc === '01230', 'the mech suit fields of a pose are relayed to the other players untouched');
 
 // digging
 const tileOf = (m) => ({ x: m.spawn[0], z: m.spawn[1] - 1 }); // one tile toward the street centre line, within reach

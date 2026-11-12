@@ -1,6 +1,11 @@
 /*
  * FIREARM: a Weapon that fires rays: one bullet or several pellets per trigger pull, with spread,
  * recoil, damage falloff and tracer lines. Each ray stops at the first wall or target.
+ *
+ * Optional config: `fireDelay` (seconds between the trigger pull and the shot; the next pull waits for the delay
+ * plus `interval`), `hipFireDelay` and `hipInterval` (the faster hip values: they blend into `fireDelay` and
+ * `interval` as the sights come up) and `hipPelletRadius` (a bigger hit volume without the sights: `pelletRadius` is the value on
+ * the sights, and the radius blends between the two as the sights come up).
  */
 
 import { clamp } from '../engine/math.js';
@@ -11,8 +16,26 @@ const MAX_HITS = 32; // one entry per projectile that connects (a buckshot blast
 export class Firearm extends Weapon {
   get aimable() { return true; }
 
+  reset() {
+    super.reset();
+    this.delayTimer = 0;
+  }
+
+  onDeselect(holder) {
+    super.onDeselect(holder);
+    this.delayTimer = 0;
+  }
+
   pull(holder, dt, input) {
     this._fireIfWanted(holder, input);
+  }
+
+  tick(holder, dt) {
+    super.tick(holder, dt);
+    if (this.delayTimer <= 0) return;
+    this.delayTimer -= dt;
+    if (this.delayTimer > 0) return;
+    if (!this.reloading && this.mag > 0) this._fire(holder); // a reload or a swap during the delay cancels the shot
   }
 
   tryFire(holder) {
@@ -37,14 +60,35 @@ export class Firearm extends Weapon {
       return;
     }
 
+    if (c.fireDelay) {
+      const { delay, interval } = this._cadence(holder, c);
+      holder.triggerBuffer = 0;
+      holder.cooldown = delay + interval;
+      this.delayTimer = delay;
+      return;
+    }
     this._fire(holder);
+  }
+
+  /** The shot delay and the interval after it: the hip values on the hip, the normal ones on the sights, blended in between. */
+  _cadence(holder, c) {
+    const blend = holder.adsBlend;
+    const mix = (hip, sights) => (hip === undefined ? sights : hip + (sights - hip) * blend);
+    return { delay: mix(c.hipFireDelay, c.fireDelay ?? 0), interval: mix(c.hipInterval, c.interval) };
+  }
+
+  /** The hit volume's radius: bigger on the hip when the weapon sets `hipPelletRadius`. */
+  _hitRadius(holder, c) {
+    const onSights = c.pelletRadius || 0;
+    if (c.hipPelletRadius === undefined) return onSights;
+    return c.hipPelletRadius + (onSights - c.hipPelletRadius) * holder.adsBlend;
   }
 
   _fire(holder) {
     const c = this.cfg;
     const { player } = holder;
     this.mag -= 1;
-    holder.cooldown = c.interval;
+    holder.cooldown = this._cadence(holder, c).interval;
     holder.triggerBuffer = 0;
     holder.heat = Math.min(holder.cfg.maxHeat, holder.heat + c.heat);
 
@@ -104,7 +148,7 @@ export class Firearm extends Weapon {
     const dir = holder._dir;
     const wallT = world.raycast(origin, dir, c.range);
     const forgiveness = holder.flickForgiveness(); // a fast flick makes the hit volumes a little bigger
-    const hit = enemies.raycast(origin, dir, Math.min(c.range, wallT), (c.pelletRadius || 0) + forgiveness.extra, forgiveness.boost);
+    const hit = enemies.raycast(origin, dir, Math.min(c.range, wallT), this._hitRadius(holder, c) + forgiveness.extra, forgiveness.boost);
     let endT = 60; // nothing hit: the tracer just flies off into the distance
 
     if (hit) {

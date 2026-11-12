@@ -35,7 +35,8 @@ export class Deathmatch {
    * @param deps { config, arenaHalf, net, player, weapons, cyborg, remotes, world, scoreboard, hud }
    * config = CONFIG.multiplayer
    */
-  constructor({ config, arenaHalf, net, player, weapons, cyborg, remotes, world, scoreboard, hud, pickups }) {
+  /** `suit` is a function that returns what the other players need to know about your mech suit (MechSuit.networkState). */
+  constructor({ config, arenaHalf, net, player, weapons, cyborg, remotes, world, scoreboard, hud, pickups, suit = () => null }) {
     this.config = config;
     this.arenaHalf = arenaHalf;
     this.net = net;
@@ -47,6 +48,7 @@ export class Deathmatch {
     this.scoreboard = scoreboard;
     this.hud = hud;
     this.pickups = pickups;
+    this.suit = suit;
     this.active = false;
     this.scores = new Map(); // id -> { kills, deaths }
     this.names = new Map(); // id -> name; kept after a player leaves so the kill feed can still name them
@@ -184,7 +186,7 @@ export class Deathmatch {
   }
 
   _sendState() {
-    this._send(poseMessage(this.player, this.weapons));
+    this._send(poseMessage(this.player, this.weapons, this.suit()));
   }
 
   _updateTimers(dt) {
@@ -274,7 +276,7 @@ export class Deathmatch {
 
   _takeHit(from, damage) {
     const amount = Math.min(Math.max(Number(damage) || 0, 0), MAX_HIT_DAMAGE);
-    if (!amount || !this.player.alive || this.player.invulnerable) return;
+    if (!amount || !this.player.alive || this.player.invulnerable || this.player.shielded) return;
     this.lastAttacker = from;
     this.player.takeDamage(amount, this.remotes.byId.get(from)?.pos);
   }
@@ -285,7 +287,7 @@ export class Deathmatch {
       this.player.cancelPull();
       return;
     }
-    if (!this.player.alive || this.player.invulnerable) return; // no grappling people who just spawned
+    if (!this.player.alive || this.player.invulnerable || this.player.shielded) return; // no grappling people who just spawned
     const speed = Math.min(Math.max(Number(message.v) || 0, 0), MAX_PULL_SPEED);
     const seconds = Math.min(Math.max(Number(message.s) || 0, 0), MAX_PULL_SECONDS);
     if (!speed || !seconds) return;

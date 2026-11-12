@@ -27,6 +27,7 @@ const MIME_TYPES: &[(&str, &str)] = &[
     ("svg", "image/svg+xml"),
     ("png", "image/png"),
     ("ico", "image/x-icon"),
+    ("fbx", "application/octet-stream"),
     ("txt", "text/plain; charset=utf-8"),
 ];
 
@@ -58,6 +59,18 @@ pub fn handle_connection<G: GameServer>(
 
     if target.split(['?', '#']).next() == Some(WEBSOCKET_PATH) {
         upgrade_to_websocket(stream, &head, hub);
+        return;
+    }
+
+    if let Some(body) = files.json_route(target) {
+        respond(
+            &mut stream,
+            200,
+            "OK",
+            "application/json",
+            body.as_bytes(),
+            method == "HEAD",
+        );
         return;
     }
 
@@ -136,9 +149,20 @@ pub struct FileRules {
     pub root: PathBuf,
     /// Paths under `root` that start with one of these are never served (the server's own source, tests, manifests).
     pub blocked_prefixes: Vec<String>,
+    /// Exact paths answered with a fixed JSON body instead of a file (see `ServerConfig::json_routes`).
+    pub json_routes: Vec<(String, String)>,
 }
 
 impl FileRules {
+    /// The fixed JSON body for this request target, if it names one of the `json_routes`.
+    pub fn json_route(&self, target: &str) -> Option<&str> {
+        let path_part = target.split(['?', '#']).next().unwrap_or("/");
+        self.json_routes
+            .iter()
+            .find(|(path, _)| path == path_part)
+            .map(|(_, body)| body.as_str())
+    }
+
     /// Map a request target to a file under `root`. Returns None for anything unsafe or not on the
     /// allow-list: path traversal, hidden files, blocked folders, odd types.
     pub fn resolve(&self, target: &str) -> Option<(PathBuf, &'static str)> {
@@ -225,8 +249,27 @@ mod tests {
         let files = FileRules {
             root: root.clone(),
             blocked_prefixes: vec!["tests/".to_owned()],
+            json_routes: vec![("/dev-flag.json".to_owned(), "{\"dev\":true}".to_owned())],
         };
         (files, root)
+    }
+
+    #[test]
+    fn should_serve_an_fbx_model_when_it_is_under_the_root() {
+        let (files, root) = rules("fbx");
+        fs::write(root.join("game/bot.fbx"), "x").unwrap();
+        let (_, mime) = files.resolve("/game/bot.fbx").unwrap();
+        assert_eq!(mime, "application/octet-stream");
+    }
+
+    #[test]
+    fn should_answer_a_json_route_when_the_path_matches_exactly() {
+        let (files, _) = rules("json");
+        assert_eq!(
+            files.json_route("/dev-flag.json?x=1"),
+            Some("{\"dev\":true}")
+        );
+        assert_eq!(files.json_route("/dev-flag.jsonx"), None);
     }
 
     #[test]

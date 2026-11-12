@@ -74,9 +74,9 @@ function buildShotgun() {
     at(bevelBox(0.008, 0.026, 0.01, MAT.steel, 0.003), 0, -0.068, 0.15), // trigger
     shroud,
     heat.ring,
-    at(new THREE.Mesh(new THREE.SphereGeometry(0.0065, 10, 8), lamp), 0, 0.0505, -0.66), // bead sight, a glowing bead
-    at(new THREE.Mesh(new THREE.SphereGeometry(0.0065, 10, 8), MAT.steel), 0, 0.0465, -0.66),
-    at(new THREE.Mesh(new THREE.SphereGeometry(0.008, 10, 8), lamp), 0.0295, -0.012, 0.24), // status lamp on the receiver
+    at(new THREE.Mesh(new THREE.SphereGeometry(0.0065, 6, 4), lamp), 0, 0.0505, -0.66), // bead sight, a glowing bead
+    at(new THREE.Mesh(new THREE.SphereGeometry(0.0065, 6, 4), MAT.steel), 0, 0.0465, -0.66),
+    at(new THREE.Mesh(new THREE.SphereGeometry(0.008, 6, 4), lamp), 0.0295, -0.012, 0.24), // status lamp on the receiver
     gauge.group,
     rightArm,
   );

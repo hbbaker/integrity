@@ -42,7 +42,11 @@ export class Player {
   constructor(camera, world, cfg) {
     this.camera = camera;
     this.world = world;
+    this.shielded = false; // true while nothing can hurt the player (a game sets it for a moment, apart from `invulnerable`, which a mode owns)
+    this.baseCfg = cfg; // the body's own numbers; setBody() layers overrides on top
     this.cfg = cfg;
+    this.movementMods = null; // { speedMul, jumpDelay, slideDelay } while something (a suit) changes how the body moves
+    this.pendingPress = { jump: -1, slide: -1 }; // seconds left on a delayed jump / slide press, or -1
     camera.rotation.order = 'YXZ'; // yaw first, then pitch, then roll: standard FPS look
 
     this.pos = new THREE.Vector3(); // feet position
@@ -83,6 +87,7 @@ export class Player {
     this.zoom = 0; // degrees of FOV removed by aiming; written by Weapons
 
     this.health = c.maxHealth;
+    this.shielded = false;
     this.alive = true;
     this.thirdPerson = this.thirdPerson ?? false; // your chosen view survives respawns and new matches
     this.tpBlend = this.thirdPerson ? 1 : 0; // 0 = first person eye, 1 = full over-the-shoulder camera
@@ -118,6 +123,17 @@ export class Player {
     this.roll = 0;
     this.prevRoll = 0;
     this.fov = c.fov;
+  }
+
+  /**
+   * Change the body: `cfgOverrides` replace body numbers (radius, eye heights, step height, ...) and `mods`
+   * ({ speedMul, jumpDelay, slideDelay }) change how it moves. Pass nothing to go back to the plain body.
+   */
+  setBody(cfgOverrides = null, mods = null) {
+    this.cfg = cfgOverrides ? { ...this.baseCfg, ...cfgOverrides } : this.baseCfg;
+    this.movementMods = mods;
+    this.pendingPress.jump = -1;
+    this.pendingPress.slide = -1;
   }
 
   /* ------------------------------- input -------------------------------- */
@@ -322,7 +338,7 @@ export class Player {
   }
 
   takeDamage(amount, fromPos) {
-    if (!this.alive || this.invulnerable) return;
+    if (!this.alive || this.invulnerable || this.shielded) return;
     this.health = Math.max(0, this.health - amount);
     this.shake = 1;
     if (fromPos) { // small shove away from the attacker
@@ -348,9 +364,31 @@ export class Player {
 
   /* ---------------------------- fixed update ----------------------------- */
 
-  update(dt, input) {
+  /** Jump and slide presses held back by `movementMods`: the press fires its delay later. */
+  _delayPresses(input, dt) {
+    const mods = this.movementMods;
+    if (!mods) return input;
+    const delayed = Object.create(input);
+    delayed.jumpPressed = this._delayPress('jump', input.jumpPressed, mods.jumpDelay, dt);
+    delayed.slidePressed = this._delayPress('slide', input.slidePressed, mods.slideDelay, dt);
+    return delayed;
+  }
+
+  _delayPress(key, pressed, delay, dt) {
+    const pending = this.pendingPress;
+    if (pressed && pending[key] < 0) pending[key] = delay;
+    if (pending[key] < 0) return false;
+    pending[key] -= dt;
+    if (pending[key] > 0) return false;
+    pending[key] = -1;
+    return true;
+  }
+
+  update(dt, rawInput) {
     const c = this.cfg;
     const world = this.world;
+    const input = this._delayPresses(rawInput, dt);
+    const speedMul = this.movementMods?.speedMul ?? 1;
 
     this._measureViewTurn(dt);
     this.prevPos.copy(this.pos);
@@ -425,14 +463,14 @@ export class Player {
       this.slideTimer -= dt;
       const k = Math.max(0, this.slideTimer / c.slideTime);
       // Quadratic decay: a hard burst up front that tapers off.
-      const speed = c.slideEndSpeed + (c.slideSpeed - c.slideEndSpeed) * k * k;
+      const speed = (c.slideEndSpeed + (c.slideSpeed - c.slideEndSpeed) * k * k) * speedMul;
       if (hasInput) this.slideDir.addScaledVector(this.wish, c.slideSteer * dt).normalize();
       this.vel.x = this.slideDir.x * speed;
       this.vel.z = this.slideDir.z * speed;
       if (this.slideTimer <= 0) this.sliding = false;
     } else {
       const baseSpeed = this.sprinting ? c.sprintSpeed : this.crouching ? c.walkSpeed * c.crouchSpeedMul : c.walkSpeed;
-      const target = baseSpeed * lerp(1, c.adsSpeedMul, this.aimBlend) * throttle;
+      const target = baseSpeed * speedMul * lerp(1, c.adsSpeedMul, this.aimBlend) * throttle;
       if (this.grounded) {
         const tx = hasInput ? this.wish.x * target : 0;
         const tz = hasInput ? this.wish.z * target : 0;

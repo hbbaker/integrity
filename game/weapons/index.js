@@ -23,9 +23,11 @@ import { weapon as shovel } from './shovel.js';
 import { weapon as fiberReel } from './fiber-reel.js';
 import { weapon as boringLauncher } from './boring-launcher.js';
 import { weapon as stopSign } from './stop-sign.js';
+import { weapon as lastWord } from './last-word.js';
+import { weapon as suitBeacon } from './suit-beacon.js';
 
 /** In list order: the position here is the item's index everywhere (loadout slots, the wheel, the inventory). */
-export const WEAPONS = [workGloves, nailGun, rivetBlaster, framingNailer, arcTorch, transitRifle, shovel, fiberReel, boringLauncher, stopSign];
+export const WEAPONS = [workGloves, nailGun, rivetBlaster, framingNailer, arcTorch, transitRifle, shovel, fiberReel, boringLauncher, stopSign, lastWord, suitBeacon];
 
 /** CONFIG.weapons.list. */
 export const WEAPON_LIST = WEAPONS.map((entry) => entry.config);
@@ -71,7 +73,7 @@ export function buildHeldModel(id) {
 
 /** The core's HoldableSystem set up with this game's weapons. */
 export class Weapons extends HoldableSystem {
-  /** @param deps { cfg (the whole CONFIG), camera, mainScene, envMap, world, enemies, player, fx, hud, audio } */
+  /** @param deps { cfg (the whole CONFIG), camera, mainScene, world, enemies, player, fx, hud, audio } */
   constructor({ cfg, ...services }) {
     super({ config: cfg.weapons, types: HOLDABLE_TYPES, models: HOLDABLE_MODELS, ...services });
   }

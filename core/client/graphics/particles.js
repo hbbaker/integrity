@@ -34,7 +34,7 @@ export class ParticlePool {
     }
     this.cursor = 0;
 
-    const blob = new THREE.IcosahedronGeometry(1, 1);
+    const blob = new THREE.IcosahedronGeometry(1, 0);
     this.smokes = [];
     for (let i = 0; i < smokeCount; i++) {
       const mesh = new THREE.Mesh(blob, new THREE.MeshBasicMaterial({ color: 0x9a9da3, transparent: true, depthWrite: false }));

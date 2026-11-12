@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { Cyborg } from '../assets/cyborg.js';
+import { RemoteSuit } from './remote-suit.js';
+import { decodeSuit } from '../suit/suit-network.js';
 import { raySphere } from './enemies.js';
 import { damp, lerp } from '../../core/client/engine/math.js';
 
@@ -7,7 +9,8 @@ import { damp, lerp } from '../../core/client/engine/math.js';
  * The other players in a multiplayer match.
  *
  * Each remote player is a Cyborg (the same third-person body the local player
- * uses) fed by network snapshots instead of by a Player / Weapons pair. A small
+ * uses: the Y Bot, or the mech suit while they wear one) fed by network snapshots
+ * instead of by a Player / Weapons pair. A small
  * adapter (RemoteView) exposes the fields Cyborg reads. Snapshots are buffered
  * and sampled slightly in the past, so motion stays smooth between the ~20 Hz
  * updates.
@@ -39,7 +42,7 @@ const MELEE_SPEED = 3; // swing progress per second
 const BEAM_TRACER_INTERVAL = 0.06;
 const BEAM_TRACER_RANGE = 90;
 
-const NAME_TAG_HEIGHT = 2.55;
+const NAME_TAG_HEIGHT = 2.1; // above a human; it grows with the avatar, so it stays above a suit
 const NAME_TAG_SCALE = 0.42; // sprite height in metres; width follows the text
 
 
@@ -95,7 +98,7 @@ function createNameTag(name) {
 }
 
 class RemotePlayer {
-  constructor(id, name, { scene, weapons }) {
+  constructor(id, name, { scene, weapons, world, suitConfig, skinLoader }) {
     this.id = id;
     this.name = name;
     this.isRemote = true; // Targets uses this to route damage to the network
@@ -115,9 +118,15 @@ class RemotePlayer {
     this.placed = false;
 
     this.view = new RemoteView(weapons);
-    this.cyborg = new Cyborg({ scene, player: this.view.player, weapons: this.view.weapons, flashLight: false });
+    this.cyborg = new Cyborg({ scene, player: this.view.player, weapons: this.view.weapons, flashLight: false, rigged: true, skinLoader });
     this.cyborg.group.add(createNameTag(name));
     this.cyborg.group.visible = false;
+    this.suit = suitConfig ? new RemoteSuit({ scene, world, config: suitConfig, cyborg: this.cyborg, view: this.view.player, skinLoader }) : null;
+  }
+
+  /** How much bigger than a human the avatar is (a mech suit makes it bigger, and its hit volumes with it). */
+  get scale() {
+    return this.suit?.scale ?? 1;
   }
 
   /** Store a received state message (positions in metres, angles in radians). */
@@ -143,6 +152,7 @@ class RemotePlayer {
     if (message.w !== weapons.index && weapons.cfg.list[message.w]) weapons.index = message.w;
     if (message.r && !weapons.reloading) this.reloadStarted = now;
     weapons.reloading = !!message.r;
+    this.suit?.apply(decodeSuit(message));
     this.hasState = true;
   }
 
@@ -191,7 +201,9 @@ class RemotePlayer {
     kick.r = damp(kick.r, 0, KICK_DECAY, dt);
     this._advanceMelee(dt);
 
+    this.suit?.update(dt);
     this.cyborg.update(dt, 1, time);
+    this.suit?.animate();
     if (cfg.beam) {
       this.cyborg.animateGun(weapons.index, dt, time, { firing: weapons.beamOn, energy: 1, power: 1, reloading: weapons.reloading });
     }
@@ -226,6 +238,7 @@ class RemotePlayer {
   }
 
   dispose(scene) {
+    this.suit?.dispose();
     scene.remove(this.cyborg.group);
     this.cyborg.group.traverse((object) => {
       if (object.material?.map) object.material.map.dispose();
@@ -235,15 +248,18 @@ class RemotePlayer {
 
 export class RemotePlayers {
   /**
-   * @param options { scene, fx, world, weapons, audio, config } config = CONFIG.multiplayer
+   * @param options { scene, fx, world, weapons, audio, config, suitConfig, skinLoader } config = CONFIG.multiplayer;
+   *   suitConfig = CONFIG.suit (without it other players' mech suits are not shown); skinLoader replaces the human model loader (tests)
    */
-  constructor({ scene, fx, world, weapons, audio, config }) {
+  constructor({ scene, fx, world, weapons, audio, config, suitConfig = null, skinLoader }) {
     this.scene = scene;
     this.fx = fx;
     this.world = world;
     this.weapons = weapons;
     this.audio = audio;
     this.config = config;
+    this.suitConfig = suitConfig;
+    this.skinLoader = skinLoader; // left undefined, the real model loader is used
     this.byId = new Map();
     this.list = []; // same players as byId, for fast loops
     this.hit = { enemy: null, t: 0, crit: false };
@@ -266,7 +282,7 @@ export class RemotePlayers {
       }
     }
     for (const [id, name] of wanted) {
-      if (!this.byId.has(id)) this.byId.set(id, new RemotePlayer(id, name, { scene: this.scene, weapons: this.weapons }));
+      if (!this.byId.has(id)) this.byId.set(id, new RemotePlayer(id, name, { scene: this.scene, weapons: this.weapons, world: this.world, suitConfig: this.suitConfig, skinLoader: this.skinLoader }));
     }
     this.list = [...this.byId.values()];
   }
@@ -335,7 +351,7 @@ export class RemotePlayers {
   /* --------------------------- shooting queries --------------------------- */
 
   _isTarget(remote) {
-    return remote.alive && remote.hp > 0 && remote.hasState;
+    return remote.alive && remote.hp > 0 && remote.hasState && !remote.suit?.busy; // nothing hurts a player who is stepping into or out of a suit
   }
 
   /** Nearest remote player along a ray (head / torso / legs spheres). Same shape as Enemies.raycast. */
@@ -347,14 +363,15 @@ export class RemotePlayers {
       if (!this._isTarget(remote) || (skip && skip.has(remote))) continue;
       const { x, y, z } = remote.pos;
       const view = remote.view.player;
-      const slide = view.sliding ? SLIDE_DROP : 0;
+      const size = remote.scale; // a player in a mech suit is bigger all over
+      const slide = view.sliding ? SLIDE_DROP * size : 0;
       const crouch = view.crouching && !slide ? CROUCH_DROP : NO_DROP;
       // A leaning player's head and chest move sideways: that is what peeking round a corner shows.
-      const leanX = Math.cos(view.yaw) * view.lean * LEAN_REACH;
-      const leanZ = -Math.sin(view.yaw) * view.lean * LEAN_REACH;
-      const th = raySphere(origin, dir, x + leanX, y + HEAD.y - slide - crouch.head, z + leanZ, HEAD.r + radius, boost);
-      const tt = raySphere(origin, dir, x + leanX * 0.5, y + TORSO.y - slide - crouch.torso, z + leanZ * 0.5, TORSO.r + radius, boost);
-      const tl = raySphere(origin, dir, x, y + LEGS.y - slide * 0.5 - crouch.legs, z, LEGS.r + radius, boost);
+      const leanX = Math.cos(view.yaw) * view.lean * LEAN_REACH * size;
+      const leanZ = -Math.sin(view.yaw) * view.lean * LEAN_REACH * size;
+      const th = raySphere(origin, dir, x + leanX, y + (HEAD.y - crouch.head) * size - slide, z + leanZ, HEAD.r * size + radius, boost);
+      const tt = raySphere(origin, dir, x + leanX * 0.5, y + (TORSO.y - crouch.torso) * size - slide, z + leanZ * 0.5, TORSO.r * size + radius, boost);
+      const tl = raySphere(origin, dir, x, y + (LEGS.y - crouch.legs) * size - slide * 0.5, z, LEGS.r * size + radius, boost);
       let tb = -1;
       if (tt >= 0) tb = tt;
       if (tl >= 0 && (tb < 0 || tl < tb)) tb = tl;
@@ -375,7 +392,7 @@ export class RemotePlayers {
   }
 
   bodyCenter(remote, out) {
-    return out.set(remote.pos.x, remote.pos.y + BODY_CENTER_Y, remote.pos.z);
+    return out.set(remote.pos.x, remote.pos.y + BODY_CENTER_Y * remote.scale, remote.pos.z);
   }
 
   /** Forgiving melee pick: nearest remote player in range and inside the cone. */
@@ -389,9 +406,9 @@ export class RemotePlayers {
       const ty = c.y - origin.y;
       const tz = c.z - origin.z;
       const d = Math.hypot(tx, ty, tz);
-      if (d - MELEE_RADIUS > range) continue;
+      if (d - MELEE_RADIUS * remote.scale > range) continue;
       const cos = (tx * forward.x + ty * forward.y + tz * forward.z) / (d || 1);
-      if (cos < minCos && d > MELEE_RADIUS + 0.3) continue;
+      if (cos < minCos && d > MELEE_RADIUS * remote.scale + 0.3) continue;
       const score = d * (2 - cos);
       if (score < bestScore) {
         bestScore = score;

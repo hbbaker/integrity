@@ -44,7 +44,7 @@ export class BeamWeapon extends Weapon {
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
 
-    const geometry = new THREE.CylinderGeometry(1, 1, 1, 14, 1, true);
+    const geometry = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
     geometry.rotateX(Math.PI / 2); // axis along Z so lookAt() aims it
     const sheath = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
       map: texture, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,

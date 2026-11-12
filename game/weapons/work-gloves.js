@@ -1,12 +1,14 @@
 /*
- * WORK GLOVES: black tactical gloves with hard metal knuckle guards and finger rolls. Always available (its own key),
- * the last stop of the weapon wheel. The knuckle lines glow in the RGB cycle and flare on a punch.
+ * WORK GLOVES: bare fists. The arms are the character's own (the Y Bot's), reaching to two hand positions that sway and
+ * punch. Always available (its own key), the last stop of the weapon wheel. Until the character model has loaded
+ * (or if it cannot), the old black gloves with their glowing knuckle lines are drawn instead.
  */
 
 import * as THREE from 'three';
 import { at, bevelBox, glowMaterial } from '../../core/client/combat/viewmodel-parts.js';
 import { MAT, makeSleeve, rgbGlows } from './shared.js';
 import { MeleeWeapon } from '../../core/client/combat/melee-weapon.js';
+import { YBotViewArms } from '../assets/y-bot-arms.js';
 
 /** The numbers: damage, speed, ammo, recoil, sights. */
 export const config = { id: 'fists', name: 'WORK GLOVES', type: 'melee', melee: true, damage: 20, interval: 0.3, range: 2.6, cone: 0.78, knockback: 9, stun: 0.45 };
@@ -26,7 +28,7 @@ function buildFists() {
       at(bevelBox(0.03, 0.04, 0.06, MAT.glove, 0.01), -side * 0.05, 0.0, -0.01), // thumb
     );
     for (let i = 0; i < FINGER_COUNT; i++) { // curled finger rolls across the front
-      const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.0095, 0.012, 4, 8), MAT.glove);
+      const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.0095, 0.012, 2, 6), MAT.glove);
       finger.rotation.z = Math.PI / 2;
       finger.position.set(-0.03 + i * 0.02, -0.005, -0.06);
       hand.add(finger);
@@ -39,8 +41,15 @@ function buildFists() {
     hands.push(hand);
   }
   const glows = rgbGlows([[knuckles, 0]]);
+  const arms = new YBotViewArms({ onReady: () => hands.forEach((hand) => { hand.visible = false; }) }); // the gloves step aside for the real arms
+  root.add(arms.object);
+  const wrists = [new THREE.Vector3(), new THREE.Vector3()];
   return {
     root, muzzle: null, home: { x: 0, y: 0, z: 0 }, parts: { hands },
+    /** Called once the hands have been placed for this frame: put the arms on them. */
+    afterView() {
+      arms.follow(hands[0].getWorldPosition(wrists[0]), hands[1].getWorldPosition(wrists[1]));
+    },
     animate(dt, time, state) {
       glows(time);
       knuckles.emissiveIntensity = state.swing ? 6 : 0.9 + Math.sin(time * 2.5) * 0.4;

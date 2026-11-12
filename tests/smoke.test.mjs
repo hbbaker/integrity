@@ -79,7 +79,7 @@ input.aimHeld = 0; input.sprintHeld = 0; input.forward = 0;
 const resetWorld = () => { enemies.clear(); player.reset(); weapons.reset(); input.forward = input.aimHeld = input.sprintHeld = 0; enemies.aimThreat = false; };
 // jump onto platform: P1 top 1.2 at x[-18,-10] z[-15,-9]; player stands on it, bot approaches from +z
 resetWorld(); player.pos.set(-14, 1.2, -12); player.prevPos.copy(player.pos);
-let b = enemies._spawnAt('cable', -14, -4, 1); b.boot = 0; let maxY = 0;
+let b = enemies._spawnAt('cable', -14, -4, 1); b.boot = 0; b.gun = null; let maxY = 0; // fists only: this bot climbs; pistols have their own test (enemy-guns.test.mjs)
 for (let i = 0; i < 60 * 8; i++) { player.pos.set(-14, 1.2, -12); enemies.update(dt); maxY = Math.max(maxY, b.pos.y); }
 assert(maxY > 1.1 && b.pos.z < -9, `bot jumps up onto platform (maxY ${maxY.toFixed(2)}, z ${b.pos.z.toFixed(1)})`);
 // cover: orange box 3x1.5x3 at origin; player south of it; bot east, hurt -> goes behind box (north side, z<-1.5)
@@ -185,7 +185,7 @@ assert(weapons.loadout.join() === '3,4,1', 'swap: pistol moved to slot 3, smg to
 weapons.selectLoadout(1); step(40); assert(weapons.current.cfg.id === 'raygun', 'key 2 equips the raygun from slot 2');
 weapons.selectLoadout(3); step(40); assert(weapons.current.cfg.id === 'fists', 'key 4 equips fists');
 input.wheel = 1; step(1); step(40); assert(weapons.current.cfg.id === 'smg', 'wheel from fists wraps to slot 1');
-const info = weapons.armory(); assert(info.length === 8 && info.filter((d) => d.id !== 'reel').every((d) => d.dps > 0) && info.some((d) => d.id === 'reel') && info.some((d) => d.id === 'drill') && info.some((d) => d.id === 'stopsign'), 'armory lists 5 guns, the reel, the boring launcher and the stop sign with stats: ' + info.map((d) => `${d.id}:${d.dps.toFixed(0)}dps`).join(' '));
+const info = weapons.armory(); assert(info.length === 9 && info.filter((d) => d.id !== 'reel').every((d) => d.dps > 0) && info.some((d) => d.id === 'reel') && info.some((d) => d.id === 'drill') && info.some((d) => d.id === 'stopsign'), 'armory lists 6 guns, the reel, the boring launcher and the stop sign with stats: ' + info.map((d) => `${d.id}:${d.dps.toFixed(0)}dps`).join(' '));
 assert(weapons.activeSlot() === 0 && globalThis.loadoutHud[1] === 0, 'active slot tracked and pushed to the HUD');
 resetWorld(); enemies.clear();
 // 7. waves / swarm

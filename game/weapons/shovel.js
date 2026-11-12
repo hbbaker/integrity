@@ -22,7 +22,7 @@ function buildBlade() {
   const shape = new THREE.Shape();
   BLADE_OUTLINE.forEach(([x, along], i) => (i === 0 ? shape.moveTo(x, along) : shape.lineTo(x, along)));
   shape.closePath();
-  const geometry = new THREE.ExtrudeGeometry(shape, { depth: BLADE_THICKNESS, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.003, bevelSegments: 2, curveSegments: 4 });
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: BLADE_THICKNESS, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.003, bevelSegments: 1, curveSegments: 2 });
   geometry.translate(0, 0, -BLADE_THICKNESS / 2);
   geometry.rotateX(-Math.PI / 2); // along the blade becomes -Z; the thickness becomes Y
   const uv = geometry.attributes.uv;
@@ -32,15 +32,15 @@ function buildBlade() {
 
 function buildShovel() {
   const root = new THREE.Group();
-  const shaft = at(lathePart([[0.017, 0], [0.017, 1.0]], MAT.polymer, 14), 0, 0, 0.25);
+  const shaft = at(lathePart([[0.017, 0], [0.017, 1.0]], MAT.polymer, 8), 0, 0, 0.25);
   const handle = tubePart([[-0.1, 0, 0.26], [-0.105, 0.045, 0.26], [-0.05, 0.075, 0.26], [0.05, 0.075, 0.26], [0.105, 0.045, 0.26], [0.1, 0, 0.26]], 0.014, MAT.grip); // D-grip over the top
-  const socket = at(lathePart([[0.017, 0], [0.027, 0.03], [0.027, 0.1], [0.014, 0.15]], MAT.gunmetal, 16), 0, 0, -0.66);
+  const socket = at(lathePart([[0.017, 0], [0.027, 0.03], [0.027, 0.1], [0.014, 0.15]], MAT.gunmetal, 8), 0, 0, -0.66);
   const bladeGroup = new THREE.Group();
   bladeGroup.position.set(0, 0, -0.74);
   bladeGroup.rotation.x = BLADE_TILT;
   const edge = glowMaterial(0xffffff, 0.6);
   edge.name = 'shovel-edge';
-  const edgeTip = tubePart(BLADE_OUTLINE.slice(3, 6).map(([x, along]) => [x * 0.985, BLADE_THICKNESS, -along * 0.985]), 0.0032, edge, 14); // lit cutting edge along the point
+  const edgeTip = tubePart(BLADE_OUTLINE.slice(3, 6).map(([x, along]) => [x * 0.985, BLADE_THICKNESS, -along * 0.985]), 0.0032, edge, 8); // lit cutting edge along the point
   const ridge = at(lathePart([[0.006, 0], [0.006, 0.2]], MAT.gunmetal, 8), 0, BLADE_THICKNESS, -0.02);
   bladeGroup.add(buildBlade(), edgeTip, ridge);
   const glows = rgbGlows([[edge, 0.1]]);
