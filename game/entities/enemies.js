@@ -221,6 +221,7 @@ export class Enemies {
     this._hideDir = new THREE.Vector3();
     this._muzzle = new THREE.Vector3();
     this._shotDir = new THREE.Vector3();
+    this._pelletDir = new THREE.Vector3();
     this._shotEnd = new THREE.Vector3();
     this._aimValid = false;
     this.tvx = 0; // steering output (target velocity)
@@ -343,6 +344,7 @@ export class Enemies {
     // Arms: shirt sleeve to the elbow, then a coax-cable forearm, gloved hand.
     const gun = def.gun ? { ...this.cfg.gun, ...def.gun } : null; // the pistol it carries: the shared one with the type's own changes
     const arms = [];
+    let pistol = null;
     for (const side of [-1, 1]) {
       const shoulder = new THREE.Group();
       shoulder.position.set(side * 0.255, 0.47, 0);
@@ -354,7 +356,7 @@ export class Enemies {
       glove.position.y = -0.33;
       elbow.add(glove);
       if (def.jackhammer && side === 1) this._addJackhammer(elbow, mats);
-      if (gun && side === 1) this._addPistol(elbow, mats);
+      if (gun && side === 1) pistol = this._addPistol(elbow, mats);
       shoulder.add(elbow);
       upper.add(shoulder);
       arms.push({ shoulder, elbow, side });
@@ -375,7 +377,7 @@ export class Enemies {
     this.scene.add(root);
 
     return {
-      key, def, gun, root, visual, hips, upper, head, legs, arms, wheel, mats,
+      key, def, gun, baseGun: gun, pistol, root, visual, hips, upper, head, legs, arms, wheel, mats,
       pos: new THREE.Vector3(), prevPos: new THREE.Vector3(),
       vel: new THREE.Vector3(), knock: new THREE.Vector3(), dodgeDir: new THREE.Vector3(),
       hp: 0, speed: 0, radius: def.scale * 0.3, reach: 0.4 * def.scale + 0.9,
@@ -453,7 +455,10 @@ export class Enemies {
     grip.position.set(0, -0.35, -0.045);
     const band = this._mesh(GEO.pistolBand, accent);
     band.position.set(0, -0.4, 0);
-    elbow.add(slide, grip, band);
+    const pistol = new THREE.Group();
+    pistol.add(slide, grip, band);
+    elbow.add(pistol);
+    return pistol;
   }
 
   /** A pneumatic drill held in the right hand. */
@@ -515,10 +520,6 @@ export class Enemies {
     e.coverBox = null;
     e.peekOut = false;
     e.returning = false;
-    if (e.gun) {
-      e.holdDist = rand(e.gun.holdDistance);
-      e.volley = randInt(e.gun.burst);
-    }
     return e;
   }
 
@@ -532,8 +533,10 @@ export class Enemies {
   /**
    * Spawn at a random point along the arena edge, rejecting any point closer than
    * `spawnMinDistance` to the player. Returns the bot, or null if capped / no spot.
+   * `loadout` (optional): `{ melee: true }` takes the gun away (fists only, same cover / duck / dodge tactics);
+   * `{ gun: {...} }` swaps in that gun profile (merged over the type's own) for this bot. A type with no gun has only fists.
    */
-  spawnAtEdge(key, speedMul) {
+  spawnAtEdge(key, speedMul, loadout = {}) {
     if (this.alive.length >= this.cfg.maxAlive) return null;
     const edge = this.arenaHalf - this.cfg.spawnMargin;
     const p = this.player.pos;
@@ -543,13 +546,14 @@ export class Enemies {
       const x = side < 2 ? along : (side === 2 ? -edge : edge);
       const z = side < 2 ? (side === 0 ? -edge : edge) : along;
       if (Math.hypot(x - p.x, z - p.z) < this.cfg.spawnMinDistance) continue;
-      return this._spawnAt(key, x, z, speedMul);
+      return this._spawnAt(key, x, z, speedMul, loadout);
     }
     return null;
   }
 
-  _spawnAt(key, x, z, speedMul) {
+  _spawnAt(key, x, z, speedMul, loadout = {}) {
     const e = this._acquire(key);
+    this._equip(e, loadout);
     e.hp = e.def.hp;
     e.pin = null;
     e.pull = null;
@@ -563,6 +567,18 @@ export class Enemies {
     e.root.visible = true;
     this.alive.push(e);
     return e;
+  }
+
+  /** Give a freshly acquired bot its gun for this spawn: none (melee), a profile of its own, or the type's gun. */
+  _equip(e, { melee = false, gun = null }) {
+    e.gun = !e.baseGun || melee ? null : { ...e.baseGun, ...gun };
+    if (e.pistol) {
+      e.pistol.visible = Boolean(e.gun);
+      e.pistol.scale.y = e.gun?.barrelLength ?? 1;
+    }
+    if (!e.gun) return;
+    e.holdDist = rand(e.gun.holdDistance);
+    e.volley = randInt(e.gun.burst);
   }
 
   clear() {
@@ -1014,9 +1030,20 @@ export class Enemies {
     const gun = e.gun;
     const player = this.player;
     const from = this._muzzleOrigin(e, e.crouch);
-    const dir = this._chest(this._shotDir).sub(from);
-    const toPlayer = dir.length() || 1;
-    dir.divideScalar(toPlayer);
+    const aim = this._chest(this._shotDir).sub(from);
+    const toPlayer = aim.length() || 1;
+    aim.divideScalar(toPlayer);
+    let damage = 0;
+    for (let pellet = 0; pellet < gun.pellets; pellet++) damage += this._firePellet(e, from, aim);
+    this.audio?.shootAt('pistol', toPlayer);
+    if (damage > 0) player.takeDamage(damage, e.pos);
+  }
+
+  /** One pellet along `aim` with random error: returns the damage it does to the player (0 on a miss). */
+  _firePellet(e, from, aim) {
+    const gun = e.gun;
+    const player = this.player;
+    const dir = this._pelletDir.copy(aim);
     dir.x += (Math.random() * 2 - 1) * gun.spread;
     dir.y += (Math.random() * 2 - 1) * gun.spread;
     dir.z += (Math.random() * 2 - 1) * gun.spread;
@@ -1033,8 +1060,7 @@ export class Enemies {
     this.fx.tracers.spawn(from, end, gun.tracerColor, TRACER_SPEED, 0.03);
     this.fx.particles.burst(from, SHOT_SPARK, 3, 2.5, 0.05, 0.12, 0);
     if (!struck && wall < gun.range) this.fx.particles.burst(end, 0xffc04d, 3, 3, 0.05, 0.18, 8); // chips off whatever it hit
-    this.audio?.shootAt('pistol', toPlayer);
-    if (struck) player.takeDamage(gun.damage, e.pos);
+    return struck ? gun.damage : 0;
   }
 
   /** Jump if what blocks us is low enough to clear (a platform edge or low cover). */

@@ -15,6 +15,7 @@ CONFIG.botMatch.killLimit = 3;
 CONFIG.botMatch.unlimited = false; // the normal rules; the unlimited case is tested at the end
 CONFIG.enemies.gun.damage = 0;
 for (const type of Object.values(CONFIG.enemies.types)) { type.damage = 0; if (type.gun) type.gun.damage = 0; } // the bots cannot hurt, with fists or pistols: deaths in this test are explicit
+for (const loadout of CONFIG.botMatch.loadouts) loadout.damage = 0; // the duel bot's weapons cannot hurt either
 
 let fails = 0;
 const check = (c, m) => { console.log(c ? 'ok  :' : 'FAIL:', m); if (!c) fails++; };
@@ -64,6 +65,17 @@ check(log.feed.some((f) => f.includes('YOU') && f.includes('BOT')), 'the kill fe
 step(Math.round(CONFIG.botMatch.spawnInterval * 2 / dt));
 check(enemies.alive.length === CONFIG.botMatch.botCount, 'a replacement bot arrives');
 
+// the duel: one bot, a random weapon from the loadout list each time it spawns
+check(match.botWeapon !== '' && enemies.alive.length === 1, `should spawn one bot with a named weapon when the duel starts (${match.botWeapon})`);
+const seen = new Set();
+for (let i = 0; i < 40; i++) {
+  enemies.clear();
+  step(Math.round(CONFIG.botMatch.spawnInterval * 1.2 / dt));
+  seen.add(match.botWeapon);
+}
+check(seen.size > 1, `should pick different weapons across spawns (${[...seen].join(', ')})`);
+check(enemies.alive[0].gun && enemies.alive[0].gun.pellets >= 1, 'should arm the duel bot with a gun');
+
 // death and respawn
 player.invulnerable = false; match.protectTimer = 0;
 const spot = { x: player.pos.x, z: player.pos.z };
@@ -87,11 +99,14 @@ check(player.health > 40, `health regenerates (${player.health.toFixed(1)})`);
 // scoreboard rows and K/D
 step(2);
 const rows = log.board.rows;
-check(rows[0].name === 'YOU' && rows[0].kills === 1 && rows[0].deaths === 1 && rows[1].name === 'BOTS' && rows[1].kills === 1 && rows[1].deaths === 1, 'scoreboard: YOU and BOTS mirror each other');
+check(rows[0].name === 'YOU' && rows[0].kills === 1 && rows[0].deaths === 1 && rows[1].name === 'BOT' && rows[1].kills === 1 && rows[1].deaths === 1, 'scoreboard: YOU and BOT mirror each other');
 check(log.board.ping === null, 'the solo scoreboard has no ping');
 
 // winning
-for (let i = 0; i < 2; i++) { const b = enemies.alive[0]; if (b) enemies.damage(b, 1e6, { dirX: 0, dirZ: 1, knock: 0, stun: 0 }); }
+for (let i = 0; i < 2; i++) {
+  step(Math.round(CONFIG.botMatch.spawnInterval * 2 / dt)); // the duel bot comes back after each kill
+  enemies.damage(enemies.alive[0], 1e6, { dirX: 0, dirZ: 1, knock: 0, stun: 0 });
+}
 check(match.over && match.winnerIsPlayer && match.wins === 1 && log.banners.includes('YOU WIN'), 'reaching the kill limit wins the match');
 check(log.board && (step(2), log.board.title === 'YOU WIN'), 'the final standings are titled');
 step(Math.round((CONFIG.botMatch.matchRestartDelay + 0.5) / dt));
@@ -104,7 +119,7 @@ for (let i = 0; i < 3; i++) {
   player.invulnerable = false; player.takeDamage(1000, null);
   step(Math.round(3.3 / dt));
 }
-check(match.over && !match.winnerIsPlayer && match.botWins === 1 && log.banners.includes('BOTS WIN'), 'the bots win when they reach the limit first');
+check(match.over && !match.winnerIsPlayer && match.botWins === 1 && log.banners.includes('BOT WINS'), 'the bots win when they reach the limit first');
 
 // regen module on its own
 const regen = new HealthRegen({ delay: 1, rate: 10 });

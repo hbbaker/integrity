@@ -65,6 +65,20 @@ async function setup(tune = () => {}) {
   check(enemies.alive.every((bot) => bot.root.visible), 'and they are all on the field');
 }
 
+// ---- loadouts ----
+{
+  const { CONFIG, enemies, stand } = await setup();
+  stand(0, 0);
+  const melee = enemies._spawnAt('cable', 0, -20, 1, { melee: true });
+  check(melee.gun === null && !melee.pistol.visible, 'should have no gun and no pistol model when spawned melee only');
+  const armed = enemies._spawnAt('cable', 8, -20, 1, { gun: { pellets: 6, damage: 5, barrelLength: 1.4 } });
+  check(armed.gun.pellets === 6 && armed.gun.range === CONFIG.enemies.gun.range && armed.pistol.visible, 'should merge a loadout over the shared gun when one is given');
+  const again = enemies._spawnAt('cable', -8, -20, 1);
+  check(again.gun && again.gun.pellets === 1, 'should give the normal gun back when a pooled bot spawns with no loadout');
+  const router = enemies._spawnAt('router', 12, -20, 1, { gun: { damage: 9 } });
+  check(router.gun === null, 'should stay fists only when the type has no gun');
+}
+
 // ---- shooting from the open ----
 {
   const { CONFIG, player, log, run, spawn, stand } = await setup();

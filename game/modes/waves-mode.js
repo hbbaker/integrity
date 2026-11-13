@@ -1,5 +1,8 @@
 import { GameMode } from '../../core/client/modes/game-mode.js';
 
+/** Wave bots never shoot: they charge with their fists, but still take cover, duck and dodge. */
+const MELEE_ONLY = { melee: true };
+
 /** Bot types that join the waves, and the wave they first appear on. */
 const WAVE_TYPES = [
   { type: 'cable', from: 1, weight: 5 },
@@ -75,7 +78,7 @@ export class WavesMode extends GameMode {
     const burst = 1 + Math.floor(this.wave / BURST_WAVE_STEP); // bigger groups later on
     for (let i = 0; i < burst && this.toSpawn > 0; i++) {
       if (this.enemies.alive.length >= this.config.enemies.maxAlive) break;
-      if (this.enemies.spawnAtEdge(this._pickType(), this.speedMul)) this.toSpawn -= 1;
+      if (this.enemies.spawnAtEdge(this._pickType(), this.speedMul, MELEE_ONLY)) this.toSpawn -= 1;
     }
     this.spawnTimer = this.spawnInterval;
   }

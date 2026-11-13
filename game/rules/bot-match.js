@@ -2,18 +2,17 @@ import { pickSpawnPoint } from '../../core/client/character/spawn.js';
 import { HealthRegen } from '../../core/client/character/regen.js';
 
 /*
- * DEATHMATCH VS BOTS: the deathmatch rules played alone. You fight the cable bots in
- * the arena. You respawn when you die (with a short spell of protection), your health
- * comes back by itself, and the first side to reach the kill limit wins the match.
- * Bots dropping ammo and health crates, and every weapon, work exactly as in the wave game.
+ * DEATHMATCH 1V1 VS BOT: the deathmatch rules played alone, as a duel. One gun-carrying bot
+ * hunts you in the arena. Every time it spawns it picks a random weapon from config.loadouts.
+ * You respawn when you die (with a short spell of protection), your health comes back by
+ * itself, and the first side to reach the kill limit wins the match.
  *
- * The player is "YOU" and the bots together are "BOTS" on the scoreboard, so the same
+ * The player is "YOU" and the bot is "BOT" on the scoreboard, so the same
  * K/D table and corner top-two as the online deathmatch apply.
  */
 
 const PLAYER_ROW_ID = 1;
 const BOTS_ROW_ID = 2;
-const BOT_TYPE_WEIGHTS = [['cable', 0.25], ['router', 0.15], ['coneHead', 0.15], ['lineman', 0.12], ['splicer', 0.1], ['technician', 0.08], ['foreman', 0.1], ['jackhammer', 0.05]];
 
 export class BotMatch {
   /**
@@ -42,6 +41,7 @@ export class BotMatch {
     this.protectTimer = 0;
     this.spawnTimer = 0;
     this.restartTimer = 0;
+    this.botWeapon = ''; // name of the weapon the current bot carries
   }
 
   start() {
@@ -92,7 +92,7 @@ export class BotMatch {
   onPlayerDeath() {
     if (!this.active) return;
     this.deaths += 1;
-    this.scoreboard.feed('BOT  ▸  YOU', false);
+    this.scoreboard.feed(`BOT (${this.botWeapon})  ▸  YOU`, false);
     this.respawnTimer = this.config.respawnTime;
     if (this.deaths >= this.config.killLimit && !this.over) this._end(false);
   }
@@ -115,22 +115,22 @@ export class BotMatch {
     }
   }
 
-  /** Keep `botCount` bots alive, adding one every spawnInterval seconds. */
+  /** Keep `botCount` bots alive, adding one every spawnInterval seconds, each with a random weapon. */
   _spawnBots(dt) {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
     this.spawnTimer = this.config.spawnInterval;
     if (this.over || this.enemies.alive.length >= this.config.botCount) return;
-    this.enemies.spawnAtEdge(this._pickBotType(), this.config.speedMul);
+    const { name, ...gun } = this._pickLoadout();
+    if (this.enemies.spawnAtEdge(this.config.botType, this.config.speedMul, { gun })) {
+      this.botWeapon = name;
+      this.hud.banner(`BOT: ${name}`);
+    }
   }
 
-  _pickBotType() {
-    let roll = Math.random();
-    for (const [type, weight] of BOT_TYPE_WEIGHTS) {
-      roll -= weight;
-      if (roll <= 0) return type;
-    }
-    return BOT_TYPE_WEIGHTS[0][0];
+  _pickLoadout() {
+    const { loadouts } = this.config;
+    return loadouts[Math.floor(Math.random() * loadouts.length)];
   }
 
   /** Put the player on a fresh spot away from the bots, with a short spell of protection. */
@@ -158,7 +158,7 @@ export class BotMatch {
     this.restartTimer = this.config.matchRestartDelay;
     if (playerWon) this.wins += 1;
     else this.botWins += 1;
-    this.hud.banner(playerWon ? 'YOU WIN' : 'BOTS WIN');
+    this.hud.banner(playerWon ? 'YOU WIN' : 'BOT WINS');
   }
 
   _newMatch() {
@@ -173,13 +173,13 @@ export class BotMatch {
 
   _title() {
     if (!this.over) return 'SCOREBOARD';
-    return this.winnerIsPlayer ? 'YOU WIN' : 'BOTS WIN';
+    return this.winnerIsPlayer ? 'YOU WIN' : 'BOT WINS';
   }
 
   _rows() {
     return [
       { id: PLAYER_ROW_ID, name: 'YOU', kills: this.kills, deaths: this.deaths, wins: this.wins, me: true },
-      { id: BOTS_ROW_ID, name: 'BOTS', kills: this.deaths, deaths: this.kills, wins: this.botWins, me: false },
+      { id: BOTS_ROW_ID, name: 'BOT', kills: this.deaths, deaths: this.kills, wins: this.botWins, me: false },
     ];
   }
 }

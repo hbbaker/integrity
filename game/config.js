@@ -136,7 +136,9 @@ export const CONFIG = {
     // The pistol a bot carries (a type with `gun: {...}` of its own overrides any of these; a type without `gun` is melee only).
     // It raises the gun for `aimTime` seconds first (your warning), then fires bursts at you with `spread` radians of aim error.
     gun: {
-      damage: 6, // per hit
+      damage: 6, // per hit (per pellet when `pellets` is above 1)
+      pellets: 1, // rays per shot
+      barrelLength: 1, // how long the gun model looks (1 = a pistol)
       interval: 0.4, // seconds between shots in a burst
       burst: [2, 4], // shots in a burst
       burstPause: [0.9, 1.6], // seconds between bursts when shooting from the open
@@ -221,16 +223,25 @@ export const CONFIG = {
 
   // DEATHMATCH VS BOTS (see bot-match.js): the deathmatch rules, played alone against the cable bots
   botMatch: {
-    unlimited: true, // solo practice: infinite health and ammo. Set false for the normal rules (respawns, protection, limited ammo)
-    botCount: 6, // bots kept alive at once (enemies.maxAlive is the hard cap)
-    spawnInterval: 1.5, // seconds between topping the bots back up
+    unlimited: false, // true = solo practice: infinite health and ammo. False = the normal rules (respawns, protection, limited ammo)
+    botType: 'cable', // the 1v1 opponent: a type that carries a gun
+    botCount: 1, // bots kept alive at once: 1 is the duel (enemies.maxAlive is the hard cap)
+    spawnInterval: 1.5, // seconds before a new bot (with a new random weapon) replaces one you killed
     speedMul: 1.1,
     respawnTime: 3,
     spawnProtect: 2,
-    killLimit: 20, // first to this many kills wins; the bots' kills are your deaths
+    killLimit: 10, // first to this many kills wins; the bot's kills are your deaths
     matchRestartDelay: 8,
     regenDelay: 5,
     regenRate: 8,
+    // The duel bot picks one of these at random each time it spawns. Same keys as `enemies.gun`; anything left out comes from it.
+    loadouts: [
+      { name: 'NAIL GUN', damage: 7 },
+      { name: 'RIVET BLASTER', damage: 5, pellets: 6, spread: 0.07, interval: 0.9, burst: [1, 1], range: 20, minRange: 2, holdDistance: [5, 8], aimTime: 0.6, barrelLength: 1.4 },
+      { name: 'FRAMING NAILER', damage: 4, interval: 0.1, burst: [5, 9], burstPause: [1, 1.8], spread: 0.045, range: 35, barrelLength: 1.2 },
+      { name: 'TRANSIT RIFLE', damage: 30, interval: 1, burst: [1, 1], spread: 0.012, aimTime: 1.1, range: 60, minRange: 6, holdDistance: [18, 28], burstPause: [1.6, 2.4], barrelLength: 2 },
+      { name: 'OLE RELIABLE', damage: 20, interval: 0.55, burst: [2, 3], spread: 0.02, aimTime: 0.5, range: 40, barrelLength: 1.3 },
+    ],
   },
 
   // Controller support (see gamepad.js). Sticks are 0..1 after the dead zone.
