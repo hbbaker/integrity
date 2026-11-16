@@ -36,7 +36,7 @@ export class Deathmatch {
    * config = CONFIG.multiplayer
    */
   /** `suit` is a function that returns what the other players need to know about your mech suit (MechSuit.networkState). */
-  constructor({ config, arenaHalf, net, player, weapons, cyborg, remotes, world, scoreboard, hud, pickups, suit = () => null }) {
+  constructor({ config, arenaHalf, net, player, weapons, cyborg, remotes, world, scoreboard, hud, pickups, suit = () => null, armor = () => null }) {
     this.config = config;
     this.arenaHalf = arenaHalf;
     this.net = net;
@@ -49,6 +49,7 @@ export class Deathmatch {
     this.hud = hud;
     this.pickups = pickups;
     this.suit = suit;
+    this.armor = armor;
     this.active = false;
     this.scores = new Map(); // id -> { kills, deaths }
     this.names = new Map(); // id -> name; kept after a player leaves so the kill feed can still name them
@@ -186,7 +187,7 @@ export class Deathmatch {
   }
 
   _sendState() {
-    this._send(poseMessage(this.player, this.weapons, this.suit()));
+    this._send(poseMessage(this.player, this.weapons, this.suit(), this.armor()));
   }
 
   _updateTimers(dt) {

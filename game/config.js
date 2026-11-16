@@ -78,7 +78,11 @@ export const CONFIG = {
     hitKnockback: 3.5,
 
     // Third person (T): over-the-shoulder camera. aim* values are used while aiming down sights.
-    thirdPerson: { dist: 3.2, shoulder: 0.55, aimDist: 1.5, aimShoulder: 0.85, pivotDrop: 0.15 },
+    thirdPerson: {
+      dist: 3.2, shoulder: 0.55, aimDist: 1.5, aimShoulder: 0.85, pivotDrop: 0.15,
+      // Ctrl + wheel moves the camera: dist is multiplied by a zoom between zoomMin and zoomMax, one zoomStep per notch.
+      zoomMin: 0.4, zoomMax: 2.5, zoomStep: 1.15,
+    },
   },
 
   weapons: {
@@ -280,6 +284,11 @@ export const CONFIG = {
     lifetime: 18,
     healthAmount: 25,
     ammo: { pistol: 24, shotgun: 8, slug: 3, smg: 60, raygun: 40, sniper: 5, drill: 1, revolver: 12 }, // keys match weapons (shotgun = buckshot) and ammoTypes[].pickupKey
+  },
+
+  // Worn armor (see game/armor/): the pieces a player equips on the character screen.
+  armor: {
+    maxReduction: 0.5, // the most damage that any set of armor can remove, as a fraction
   },
 
   // The mech suit: a power-armour frame much bigger than the human who steps into it from behind.

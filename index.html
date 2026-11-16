@@ -244,7 +244,8 @@
   #char-flyout .tag { width: 100%; font-size: 14px; color: var(--magenta); }
   #char-center { align-self: stretch; min-height: 420px; border: 2px solid var(--line); background: rgba(2, 4, 24, .6); }
   #char-preview { position: static; width: 100%; height: 100%; min-height: 420px; display: block; cursor: grab; touch-action: none; }
-  #char-suit { padding: 10px 14px 14px; text-align: left; }
+  #char-suit, #char-armor { padding: 10px 14px 14px; text-align: left; }
+  #char-armor { display: none; }
   #char-suit .btn-row { gap: 8px; margin: 6px 0; }
   #char-suit .menu-btn { font-size: 18px; padding: 4px 14px; }
   #char-suit .menu-btn[disabled] { opacity: .4; cursor: not-allowed; }
@@ -426,6 +427,7 @@
     </div>
     <div id="char-center"><canvas id="char-preview"></canvas></div>
     <div id="char-suit" class="panel"></div>
+    <div id="char-armor" class="panel"></div>
   </div>
   <div id="char-dev"></div>
   <p class="hint">HOVER A SLOT TO CHOOSE ITS WEAPON &nbsp;&middot;&nbsp; 1-3 PICK SLOT &nbsp;&middot;&nbsp; I OR ESC TO CLOSE</p>

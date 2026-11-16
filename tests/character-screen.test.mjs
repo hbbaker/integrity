@@ -12,6 +12,7 @@ const { Weapons } = await load('weapons');
 const { Enemies } = await load('enemies');
 const { createEffects } = await load('effects');
 const { SuitState } = await load('suit-state');
+const { ArmorState } = await load('armor-state');
 const { SUIT_PARTS } = await load('suit-parts');
 
 let fails = 0;
@@ -24,7 +25,7 @@ const element = () => {
   const handlers = {};
   return { style: {}, innerHTML: '', handlers, addEventListener(type, fn) { handlers[type] = fn; } };
 };
-for (const id of ['character', 'char-tabs', 'char-slots', 'char-flyout', 'char-left', 'char-preview', 'char-suit', 'char-dev', 'char-main']) elements[id] = element();
+for (const id of ['character', 'char-tabs', 'char-slots', 'char-flyout', 'char-left', 'char-preview', 'char-suit', 'char-armor', 'char-dev', 'char-main']) elements[id] = element();
 globalThis.document.getElementById = (id) => elements[id];
 const { CharacterScreen } = await load('character-screen');
 
@@ -44,14 +45,16 @@ const enemies = new Enemies({ cfg: CONFIG, scene, world, fx, player });
 const weapons = new Weapons({ cfg: CONFIG, camera, mainScene: scene, world, enemies, player, fx, hud, audio });
 const memory = new Map();
 const suitState = new SuitState({ getItem: (k) => memory.get(k) ?? null, setItem: (k, v) => memory.set(k, v) });
+const armorState = new ArmorState({ getItem: (k) => memory.get(k) ?? null, setItem: (k, v) => memory.set(k, v) });
 
 const log = { resumed: 0, placed: 0, pickedUp: 0, exited: 0, preview: [] };
-const preview = { start: () => log.preview.push('start'), stop: () => log.preview.push('stop'), showSuit: (on) => { log.suitShown = on; }, setPart: (slot, id) => log.preview.push(`${slot}:${id}`) };
+const preview = { start: () => log.preview.push('start'), stop: () => log.preview.push('stop'), showSuit: (on) => { log.suitShown = on; }, setPart: (slot, id) => log.preview.push(`${slot}:${id}`), wearArmor: (equipped) => log.preview.push(`armor:${equipped.head}`) };
 let canPlace = true;
 let canPickUp = true;
 const screen = new CharacterScreen({
   weapons,
   suitState,
+  armorState,
   suitActions: { canPlace: () => canPlace, place: () => { log.placed++; }, canPickUp: () => canPickUp, pickUp: () => { log.pickedUp++; }, exit: () => { log.exited++; } },
   onResume: () => { log.resumed++; },
   createPreview: () => preview,
@@ -106,6 +109,22 @@ check(elements['char-suit'].innerHTML.includes('EXIT SUIT'), 'inside the suit th
 click('[data-action]', { action: 'exit' });
 check(log.exited === 1, 'the exit button asks the world to climb out');
 suitState.setOccupied(false);
+
+// ---- the ARMOR tab ----
+check(elements['char-tabs'].innerHTML.includes('data-tab="armor"'), 'there is an ARMOR tab');
+click('[data-tab]', { tab: 'armor' });
+check(elements['char-main'].style.display === 'grid' && elements['char-armor'].style.display === 'block' && elements['char-suit'].style.display === 'none', 'the ARMOR tab keeps the character in view and swaps the suit panel for the armor panel');
+check(elements['char-armor'].innerHTML.includes('Test Helmet') && elements['char-armor'].innerHTML.includes('0% DAMAGE REDUCTION'), 'it lists the helmet and shows the damage reduction');
+click('[data-armor-piece]', { armorSlot: 'head', armorPiece: 'test-helmet' });
+check(armorState.equipped.head === 'test-helmet' && elements['char-armor'].innerHTML.includes('10% DAMAGE REDUCTION'), 'clicking the helmet equips it and shows its damage reduction');
+check(log.preview.includes('armor:test-helmet'), 'the turntable is told to show the helmet');
+click('[data-armor-piece]', { armorSlot: 'head', armorPiece: '' });
+check(armorState.equipped.head === null, 'clicking NONE takes it off');
+suitState.setOccupied(true);
+check(elements['char-armor'].innerHTML.includes('HIDDEN WHILE YOU ARE IN THE SUIT'), 'inside the suit the panel says the armor is hidden');
+suitState.setOccupied(false);
+click('[data-tab]', { tab: 'character' });
+check(elements['char-suit'].style.display === 'block' && elements['char-armor'].style.display === 'none', 'the CHARACTER tab shows the suit panel again');
 
 // ---- the DEV tab ----
 screen.setDevMode(true);

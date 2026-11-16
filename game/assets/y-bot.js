@@ -59,6 +59,7 @@ const FINGER_CURL = [1.4, 1.6, 1.1]; // radians a finger's three joints close at
 const THUMB_CURL = [0.5, 0.6, 0.5];
 const FINGERS = ['Index', 'Middle', 'Ring', 'Pinky', 'Thumb'];
 const RELAXED_GRIP = 0.25; // an idle hand is slightly curled, not flat
+const HEAD_BONES = /Head/; // the head and its top, not the neck
 const ARM_BONES = /(Arm|Hand)/; // the arms and hands, not the shoulders or anything else // where a held arm's elbow wants to point: out, down and a little back
 
 const BONE_PREFIX = 'mixamorig';
@@ -116,6 +117,7 @@ export class YBotSkin {
     this.grip = RELAXED_GRIP; // how closed the hands are: 0 flat .. 1 fist
     this.ready = false;
     this.active = true; // show the Y Bot (true) or the rig's own look (false)
+    this.headVisible = true; // false while a helmet takes the head's place
     this.rootInverse = new THREE.Matrix4();
     this.scratch = { position: new THREE.Vector3(), scale: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
     load().then((template) => { if (template) this._build(template); });
@@ -148,9 +150,28 @@ export class YBotSkin {
     this._stretchArms();
     this.ready = true;
     this.setActive(this.active);
+    this._showHead();
     this._applyGrip();
     this.sync();
+    if (!this.armsOnly) this._carryArmorOnHead();
     this.onReady?.();
+  }
+
+  /**
+   * Move the rig's armor mounts from its head pivot onto the Y Bot's head bone, keeping them exactly where they are now.
+   * The bone has the gait, the crouch and the slide in it; the pivot only has the aim. Armor on the bone follows the whole animation.
+   */
+  _carryArmorOnHead() {
+    const head = this.bones.get(boneName('Head'));
+    this.body.root.updateWorldMatrix(true, true);
+    const headInverse = head.matrixWorld.clone().invert();
+    for (const mount of Object.values(this.body.armorMounts)) {
+      const anchor = new THREE.Group(); // holds the fixed offset from the bone, scale included (the bone is in centimetres)
+      anchor.matrixAutoUpdate = false;
+      anchor.matrix.multiplyMatrices(headInverse, mount.matrixWorld);
+      head.add(anchor);
+      anchor.add(mount);
+    }
   }
 
   /** Every finger joint, with the axis it closes about (in its own frame) so a hand can make a fist. */
@@ -194,6 +215,21 @@ export class YBotSkin {
       bone.quaternion.copy(restQuaternion).multiply(turn.setFromAxisAngle(axis, curl * this.grip));
     }
     for (const side of SIDES) this.bones.get(boneName(`${side}Hand`)).updateMatrixWorld(true);
+  }
+
+  /** Draw the Y Bot's own head (true), or leave it out (false: a helmet is worn in its place). */
+  setHeadVisible(visible) {
+    this.headVisible = visible;
+    this._showHead();
+  }
+
+  _showHead() {
+    if (!this.ready || this.armsOnly) return;
+    this.model.traverse((node) => {
+      if (!node.isSkinnedMesh) return;
+      node.userData.fullGeometry ??= node.geometry;
+      node.geometry = this.headVisible ? node.userData.fullGeometry : headlessTriangles({ geometry: node.userData.fullGeometry, skeleton: node.skeleton });
+    });
   }
 
   /** Show the Y Bot (true), or hide it and show the rig's own look (false: the mech suit is on). */
@@ -437,27 +473,42 @@ function gaitLegs(motion) {
 /* ------------------------------ arms only -------------------------------- */
 
 /** A copy of a skinned mesh's geometry with only the triangles that belong to the arms and hands. */
-function armTriangles(mesh) {
+/**
+ * A copy of the mesh's geometry with only the triangles that `keep` accepts. Each vertex belongs to the bone that moves it
+ * most; `keep` gets the names of the three bones of a triangle.
+ */
+function filterTriangles(mesh, keep) {
   const source = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
   const { skinIndex, skinWeight } = source.attributes;
   const bones = mesh.skeleton.bones;
-  const isArmVertex = new Uint8Array(skinIndex.count);
+  const strongestBone = new Array(skinIndex.count);
   for (let v = 0; v < skinIndex.count; v++) {
     let strongest = 0;
     for (let k = 1; k < 4; k++) if (skinWeight.getComponent(v, k) > skinWeight.getComponent(v, strongest)) strongest = k;
-    isArmVertex[v] = ARM_BONES.test(bones[skinIndex.getComponent(v, strongest)].name) ? 1 : 0;
+    strongestBone[v] = bones[skinIndex.getComponent(v, strongest)].name;
   }
-  const keep = [];
+  const kept = [];
   for (let triangle = 0; triangle < skinIndex.count / 3; triangle++) {
-    if (isArmVertex[triangle * 3] && isArmVertex[triangle * 3 + 1] && isArmVertex[triangle * 3 + 2]) keep.push(triangle);
+    if (keep(strongestBone.slice(triangle * 3, triangle * 3 + 3))) kept.push(triangle);
   }
   const geometry = new THREE.BufferGeometry();
   for (const [name, attribute] of Object.entries(source.attributes)) {
-    const copy = new attribute.array.constructor(keep.length * 3 * attribute.itemSize);
-    keep.forEach((triangle, i) => {
+    const copy = new attribute.array.constructor(kept.length * 3 * attribute.itemSize);
+    kept.forEach((triangle, i) => {
       copy.set(attribute.array.subarray(triangle * 3 * attribute.itemSize, (triangle + 1) * 3 * attribute.itemSize), i * 3 * attribute.itemSize);
     });
     geometry.setAttribute(name, new THREE.BufferAttribute(copy, attribute.itemSize, attribute.normalized));
   }
   return geometry;
+}
+
+const armTriangles = (mesh) => filterTriangles(mesh, (names) => names.every((name) => ARM_BONES.test(name)));
+
+// The same file gives every skin the same triangles, so the headless copy is made once per source geometry.
+const headlessCache = new WeakMap();
+function headlessTriangles(mesh) {
+  if (!headlessCache.has(mesh.geometry)) {
+    headlessCache.set(mesh.geometry, filterTriangles(mesh, (names) => !names.every((name) => HEAD_BONES.test(name))));
+  }
+  return headlessCache.get(mesh.geometry);
 }

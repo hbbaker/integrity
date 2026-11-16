@@ -9,6 +9,8 @@ import { BodyRig } from './body-rig.js';
 import { HUMANOID_KIT, HUMANOID_MATERIALS } from './humanoid.js';
 import { clearSuitExtras, dressSuitBody, setSuitPart as fitSuitPart } from './mech-suit.js';
 import { YBotSkin, loadYBot } from './y-bot.js';
+import { ArmorWearer } from '../armor/armor-wearer.js';
+import { loadArmorModel } from '../armor/armor-model.js';
 
 /*
  * The third-person character: a green-and-black cybernetic robot (black plating,
@@ -240,8 +242,8 @@ function buildRiggedBody(owner) {
 }
 
 export class Cyborg {
-  /** `rigged` builds the human (the Y Bot, swappable to the suit) instead of the green cyborg. `skinLoader` replaces the model loader (tests). */
-  constructor({ scene, player, weapons, flashLight = true, rigged = false, skinLoader = loadYBot }) {
+  /** `rigged` builds the human (the Y Bot, swappable to the suit) instead of the green cyborg. `skinLoader` and `armorLoader` replace the model loaders (tests). */
+  constructor({ scene, player, weapons, flashLight = true, rigged = false, skinLoader = loadYBot, armorLoader = loadArmorModel }) {
     this.player = player;
     this.weapons = weapons;
     this.group = new THREE.Group();
@@ -257,6 +259,7 @@ export class Cyborg {
     if (rigged) buildRiggedBody(this);
     else buildCyborgBody(this);
     this.skin = rigged ? new YBotSkin(this.body, { load: skinLoader }) : null; // draws the human once the model has loaded
+    this.armor = rigged ? new ArmorWearer(this.body, armorLoader, this.skin) : null;
     this.group.add(this.root);
 
     // Gun in the right hand: one copy per weapon, only the equipped one shown.
@@ -304,6 +307,11 @@ export class Cyborg {
     this.aimW = 0;
   }
 
+  /** Rigged bodies only: wear the armor in `equipped` (ArmorState.equipped or the decoded `ar` key). Cheap to repeat. */
+  wearArmor(equipped) {
+    this.armor.wear(equipped);
+  }
+
   /** Rigged bodies only: wear the suit parts in `selection` at `scale`, or pass null to go back to the grey human. */
   setSuit(selection, scale = 1) {
     if (selection) dressSuitBody(this.body, selection);
@@ -312,6 +320,7 @@ export class Cyborg {
       this.body.setKit(HUMANOID_KIT, HUMANOID_MATERIALS);
     }
     this.skin?.setActive(!selection);
+    this.body.setArmorVisible(!selection); // the suit has its own parts; the armor comes back when it is taken off
     this.group.scale.setScalar(selection ? scale : 1);
   }
 

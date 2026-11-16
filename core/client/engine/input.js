@@ -16,15 +16,17 @@ export class DeviceInput {
    *   ignoreEvent(event): true for events that are not for the game (typing in a text field),
    *   onEscape(event): true if handled (a menu closes); capture is cancelled before this is asked,
    *   onLook(dx, dy): mouse movement while the gate is open,
+   *   onZoom(steps): the wheel turned while Ctrl is held (+1 notch up, -1 notch down); true if handled, so the wheel does nothing else,
    *   target: the event target (document),
    * }
    */
-  constructor({ actionInput, gateOpen, ignoreEvent = () => false, onEscape = () => false, onLook = () => {}, target = document }) {
+  constructor({ actionInput, gateOpen, ignoreEvent = () => false, onEscape = () => false, onLook = () => {}, onZoom = () => false, target = document }) {
     this.actionInput = actionInput;
     this.gateOpen = gateOpen;
     this.ignoreEvent = ignoreEvent;
     this.onEscape = onEscape;
     this.onLook = onLook;
+    this.onZoom = onZoom;
     this.target = target;
   }
 
@@ -35,7 +37,7 @@ export class DeviceInput {
     target.addEventListener('mousedown', (event) => this._mouseDown(event));
     target.addEventListener('mouseup', (event) => this.actionInput.release(`Mouse${event.button}`));
     target.addEventListener('contextmenu', (event) => event.preventDefault());
-    target.addEventListener('wheel', (event) => this._wheel(event), { passive: true });
+    target.addEventListener('wheel', (event) => this._wheel(event), { passive: false }); // not passive: a zoom must stop the browser zooming the page
     target.addEventListener('mousemove', (event) => {
       if (this.gateOpen() && !this.actionInput.capturing) this.onLook(event.movementX, event.movementY);
     });
@@ -64,10 +66,14 @@ export class DeviceInput {
     this.actionInput.press(`Mouse${event.button}`);
   }
 
-  /** A wheel notch is a press and an instant release of "WheelUp" or "WheelDown". */
+  /** A wheel notch is a press and an instant release of "WheelUp" or "WheelDown"; with Ctrl held it is a zoom instead, if the game takes it. */
   _wheel(event) {
     const control = event.deltaY < 0 ? WHEEL_UP : WHEEL_DOWN;
     if (!this.gateOpen() && !this.actionInput.capturing) return;
+    if (event.ctrlKey && !this.actionInput.capturing && this.onZoom(event.deltaY < 0 ? 1 : -1)) {
+      event.preventDefault();
+      return;
+    }
     this.actionInput.press(control);
     this.actionInput.release(control);
   }

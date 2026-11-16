@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Cyborg } from '../assets/cyborg.js';
 import { RemoteSuit } from './remote-suit.js';
 import { decodeSuit } from '../suit/suit-network.js';
+import { decodeEquipment } from '../armor/armor-network.js';
 import { raySphere } from './enemies.js';
 import { damp, lerp } from '../../core/client/engine/math.js';
 
@@ -98,7 +99,7 @@ function createNameTag(name) {
 }
 
 class RemotePlayer {
-  constructor(id, name, { scene, weapons, world, suitConfig, skinLoader }) {
+  constructor(id, name, { scene, weapons, world, suitConfig, skinLoader, armorLoader }) {
     this.id = id;
     this.name = name;
     this.isRemote = true; // Targets uses this to route damage to the network
@@ -118,7 +119,7 @@ class RemotePlayer {
     this.placed = false;
 
     this.view = new RemoteView(weapons);
-    this.cyborg = new Cyborg({ scene, player: this.view.player, weapons: this.view.weapons, flashLight: false, rigged: true, skinLoader });
+    this.cyborg = new Cyborg({ scene, player: this.view.player, weapons: this.view.weapons, flashLight: false, rigged: true, skinLoader, armorLoader });
     this.cyborg.group.add(createNameTag(name));
     this.cyborg.group.visible = false;
     this.suit = suitConfig ? new RemoteSuit({ scene, world, config: suitConfig, cyborg: this.cyborg, view: this.view.player, skinLoader }) : null;
@@ -153,6 +154,7 @@ class RemotePlayer {
     if (message.r && !weapons.reloading) this.reloadStarted = now;
     weapons.reloading = !!message.r;
     this.suit?.apply(decodeSuit(message));
+    this.cyborg.wearArmor(decodeEquipment(message.ar));
     this.hasState = true;
   }
 
@@ -251,7 +253,7 @@ export class RemotePlayers {
    * @param options { scene, fx, world, weapons, audio, config, suitConfig, skinLoader } config = CONFIG.multiplayer;
    *   suitConfig = CONFIG.suit (without it other players' mech suits are not shown); skinLoader replaces the human model loader (tests)
    */
-  constructor({ scene, fx, world, weapons, audio, config, suitConfig = null, skinLoader }) {
+  constructor({ scene, fx, world, weapons, audio, config, suitConfig = null, skinLoader, armorLoader }) {
     this.scene = scene;
     this.fx = fx;
     this.world = world;
@@ -260,6 +262,7 @@ export class RemotePlayers {
     this.config = config;
     this.suitConfig = suitConfig;
     this.skinLoader = skinLoader; // left undefined, the real model loader is used
+    this.armorLoader = armorLoader; // likewise
     this.byId = new Map();
     this.list = []; // same players as byId, for fast loops
     this.hit = { enemy: null, t: 0, crit: false };
@@ -282,7 +285,7 @@ export class RemotePlayers {
       }
     }
     for (const [id, name] of wanted) {
-      if (!this.byId.has(id)) this.byId.set(id, new RemotePlayer(id, name, { scene: this.scene, weapons: this.weapons, world: this.world, suitConfig: this.suitConfig, skinLoader: this.skinLoader }));
+      if (!this.byId.has(id)) this.byId.set(id, new RemotePlayer(id, name, { scene: this.scene, weapons: this.weapons, world: this.world, suitConfig: this.suitConfig, skinLoader: this.skinLoader, armorLoader: this.armorLoader }));
     }
     this.list = [...this.byId.values()];
   }
