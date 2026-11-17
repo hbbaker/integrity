@@ -70,10 +70,11 @@ export class BodyRig {
     this.torso.add(this.head);
     this.headMount = new THREE.Group();
     this.head.add(this.headMount);
-    // Worn armor hangs on the head pivot, not on headMount: a skinned model hides every look mount.
+    // Worn armor hangs on a pivot, not on a look mount: a skinned model hides every look mount.
     // Only slots with a mount here can be dressed (the other armor slots have no pieces yet).
-    this.armorMounts = { head: new THREE.Group() };
+    this.armorMounts = { head: new THREE.Group(), chest: new THREE.Group() };
     this.head.add(this.armorMounts.head);
+    this.torso.add(this.armorMounts.chest);
 
     // Aim rig: both arms (and the gun) pitch together around the shoulders.
     this.rig = new THREE.Group();

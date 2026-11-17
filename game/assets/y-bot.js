@@ -59,7 +59,11 @@ const FINGER_CURL = [1.4, 1.6, 1.1]; // radians a finger's three joints close at
 const THUMB_CURL = [0.5, 0.6, 0.5];
 const FINGERS = ['Index', 'Middle', 'Ring', 'Pinky', 'Thumb'];
 const RELAXED_GRIP = 0.25; // an idle hand is slightly curled, not flat
+const ARMOR_BONES = { head: 'Head', chest: 'Spine2' }; // the bone that carries each armor slot
 const HEAD_BONES = /Head/; // the head and its top, not the neck
+const CHEST_BONES = /Spine/; // the spine bones carry the torso skin; the shoulders and arms stay
+const BODY_PART_BONES = { head: HEAD_BONES, chest: CHEST_BONES };
+const BODY_PARTS = Object.keys(BODY_PART_BONES);
 const ARM_BONES = /(Arm|Hand)/; // the arms and hands, not the shoulders or anything else // where a held arm's elbow wants to point: out, down and a little back
 
 const BONE_PREFIX = 'mixamorig';
@@ -118,6 +122,7 @@ export class YBotSkin {
     this.ready = false;
     this.active = true; // show the Y Bot (true) or the rig's own look (false)
     this.headVisible = true; // false while a helmet takes the head's place
+    this.chestVisible = true; // false while a chestplate takes the torso's place
     this.rootInverse = new THREE.Matrix4();
     this.scratch = { position: new THREE.Vector3(), scale: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
     load().then((template) => { if (template) this._build(template); });
@@ -150,26 +155,26 @@ export class YBotSkin {
     this._stretchArms();
     this.ready = true;
     this.setActive(this.active);
-    this._showHead();
+    this._showBody();
     this._applyGrip();
     this.sync();
-    if (!this.armsOnly) this._carryArmorOnHead();
+    if (!this.armsOnly) this._carryArmorOnBones();
     this.onReady?.();
   }
 
   /**
-   * Move the rig's armor mounts from its head pivot onto the Y Bot's head bone, keeping them exactly where they are now.
-   * The bone has the gait, the crouch and the slide in it; the pivot only has the aim. Armor on the bone follows the whole animation.
+   * Move the rig's armor mounts from their pivots onto the Y Bot's bones, keeping them exactly where they are now.
+   * A bone has the gait, the crouch and the slide in it; a pivot only has the aim. Armor on the bone follows the whole animation.
    */
-  _carryArmorOnHead() {
-    const head = this.bones.get(boneName('Head'));
+  _carryArmorOnBones() {
     this.body.root.updateWorldMatrix(true, true);
-    const headInverse = head.matrixWorld.clone().invert();
-    for (const mount of Object.values(this.body.armorMounts)) {
+    for (const [slot, mount] of Object.entries(this.body.armorMounts)) {
+      const bone = this.bones.get(boneName(ARMOR_BONES[slot]));
+      const boneInverse = bone.matrixWorld.clone().invert();
       const anchor = new THREE.Group(); // holds the fixed offset from the bone, scale included (the bone is in centimetres)
       anchor.matrixAutoUpdate = false;
-      anchor.matrix.multiplyMatrices(headInverse, mount.matrixWorld);
-      head.add(anchor);
+      anchor.matrix.multiplyMatrices(boneInverse, mount.matrixWorld);
+      bone.add(anchor);
       anchor.add(mount);
     }
   }
@@ -220,15 +225,21 @@ export class YBotSkin {
   /** Draw the Y Bot's own head (true), or leave it out (false: a helmet is worn in its place). */
   setHeadVisible(visible) {
     this.headVisible = visible;
-    this._showHead();
+    this._showBody();
   }
 
-  _showHead() {
+  /** Draw the Y Bot's own torso (true), or leave it out (false: a chestplate is worn in its place). */
+  setChestVisible(visible) {
+    this.chestVisible = visible;
+    this._showBody();
+  }
+
+  _showBody() {
     if (!this.ready || this.armsOnly) return;
     this.model.traverse((node) => {
       if (!node.isSkinnedMesh) return;
       node.userData.fullGeometry ??= node.geometry;
-      node.geometry = this.headVisible ? node.userData.fullGeometry : headlessTriangles({ geometry: node.userData.fullGeometry, skeleton: node.skeleton });
+      node.geometry = partsHidden(node.userData.fullGeometry, node.skeleton, { head: !this.headVisible, chest: !this.chestVisible });
     });
   }
 
@@ -504,11 +515,18 @@ function filterTriangles(mesh, keep) {
 
 const armTriangles = (mesh) => filterTriangles(mesh, (names) => names.every((name) => ARM_BONES.test(name)));
 
-// The same file gives every skin the same triangles, so the headless copy is made once per source geometry.
-const headlessCache = new WeakMap();
-function headlessTriangles(mesh) {
-  if (!headlessCache.has(mesh.geometry)) {
-    headlessCache.set(mesh.geometry, filterTriangles(mesh, (names) => !names.every((name) => HEAD_BONES.test(name))));
+// The same file gives every skin the same triangles, so each cut-down copy is made once per source geometry and combination.
+const hiddenCache = new WeakMap(); // geometry -> Map<'head,chest' -> geometry>
+function partsHidden(geometry, skeleton, hidden) {
+  const hide = BODY_PARTS.filter((part) => hidden[part]);
+  if (hide.length === 0) return geometry;
+  if (!hiddenCache.has(geometry)) hiddenCache.set(geometry, new Map());
+  const copies = hiddenCache.get(geometry);
+  const key = hide.join(',');
+  if (!copies.has(key)) {
+    const bones = hide.map((part) => BODY_PART_BONES[part]);
+    const insideHidden = (names) => names.every((name) => bones.some((bone) => bone.test(name)));
+    copies.set(key, filterTriangles({ geometry, skeleton }, (names) => !insideHidden(names)));
   }
-  return headlessCache.get(mesh.geometry);
+  return copies.get(key);
 }

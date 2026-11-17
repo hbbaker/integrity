@@ -24,7 +24,19 @@ export const ARMOR_PARTS = {
     },
   }],
   arms: [],
-  chest: [],
+  chest: [{
+    id: 'test-chestplate',
+    name: 'Test Chestplate',
+    armor: 0.2,
+    model: {
+      folder: new URL('../assets/test_chest_textured/', import.meta.url).href,
+      obj: 'textured.obj',
+      mtl: 'textured.mtl',
+      height: 0.45, // metres: waist to shoulders on the Y Bot, which keeps its own torso under the plate
+      lift: 0.1, // metres above the torso pivot (0.9 m): the base sits at the waist, about 1.0 m
+      turn: Math.PI, // radians about the vertical axis: assumed to face +Z like the helmet, the body faces -Z
+    },
+  }],
   legs: [],
   boots: [],
 };

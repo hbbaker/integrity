@@ -5,14 +5,14 @@ import { loadArmorModel } from './armor-model.js';
  * Puts the equipped armor on a BodyRig. `wear` is cheap to call every frame or every
  * network message: it only loads and swaps a slot when the equipped piece changed.
  * Models load in the background; a piece that is replaced before it arrives is dropped.
- * A skinned body that is given draws without its own head while a helmet is worn, and gets it back when the helmet comes off.
+ * A skinned body that is given draws without its own head while a helmet is worn, and without its torso while a chestplate is worn. It gets them back when the piece comes off.
  */
 
 export class ArmorWearer {
   /**
    * @param {import('../assets/body-rig.js').BodyRig} body
    * @param {(piece: object) => Promise<import('three').Object3D>} [loadModel] replaces the model loader (tests)
-   * @param {{ setHeadVisible(visible: boolean): void } | null} [skin] the skinned model on this body, if there is one
+   * @param {{ setHeadVisible(visible: boolean): void, setChestVisible(visible: boolean): void } | null} [skin] the skinned model on this body, if there is one
    */
   constructor(body, loadModel = loadArmorModel, skin = null) {
     this.body = body;
@@ -34,12 +34,18 @@ export class ArmorWearer {
 
   _put(slot, model) {
     this.body.setArmor(slot, model);
-    if (slot === 'head') this.skin?.setHeadVisible(false);
+    this._showOwnPart(slot, false);
   }
 
   _take(slot) {
     this.body.setArmor(slot, null);
-    if (slot === 'head') this.skin?.setHeadVisible(true);
+    this._showOwnPart(slot, true);
+  }
+
+  /** The skinned body leaves out the part that a piece replaces: its head or its torso. */
+  _showOwnPart(slot, visible) {
+    if (slot === 'head') this.skin?.setHeadVisible(visible);
+    else if (slot === 'chest') this.skin?.setChestVisible?.(visible);
   }
 
   async _fit(slot, piece) {
