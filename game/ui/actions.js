@@ -20,7 +20,7 @@ export const ACTIONS = [
   { id: 'right', label: 'MOVE RIGHT', group: 'MOVEMENT', hold: 'right', defaults: { keyboard: ['KeyD', 'ArrowRight'], gamepad: [] } },
   { id: 'sprint', label: 'SPRINT', group: 'MOVEMENT', hold: 'sprintHeld', press: 'sprintPressed', latchWhileMoving: true, defaults: { keyboard: ['ShiftLeft', 'ShiftRight'], gamepad: ['Pad10'] } },
   { id: 'jump', label: 'JUMP', group: 'MOVEMENT', press: 'jumpPressed', defaults: { keyboard: ['Space'], gamepad: ['Pad0'] } },
-  { id: 'crouch', label: 'CROUCH / SLIDE', group: 'MOVEMENT', hold: 'crouchHeld', press: 'slidePressed', defaults: { keyboard: ['KeyC', 'ControlLeft'], gamepad: ['Pad1'] } },
+  { id: 'crouch', label: 'CROUCH / SLIDE', group: 'MOVEMENT', hold: 'crouchHeld', press: 'slidePressed', defaults: { keyboard: ['KeyC'], gamepad: ['Pad1'] } },
   { id: 'leanLeft', label: 'LEAN LEFT', group: 'MOVEMENT', hold: 'leanLeft', defaults: { keyboard: ['KeyQ'], gamepad: ['Pad4'] } },
   { id: 'interact', label: 'USE / ENTER SUIT', group: 'MOVEMENT', press: 'interactPressed', defaults: { keyboard: ['KeyV'], gamepad: [] } },
   { id: 'leanRight', label: 'LEAN RIGHT', group: 'MOVEMENT', hold: 'leanRight', defaults: { keyboard: ['KeyE'], gamepad: ['Pad5'] } },

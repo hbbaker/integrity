@@ -70,6 +70,11 @@ export class BodyRig {
     this.torso.add(this.head);
     this.headMount = new THREE.Group();
     this.head.add(this.headMount);
+    // Worn armor hangs on a pivot, not on a look mount: a skinned model hides every look mount.
+    // Only slots with a mount here can be dressed (the other armor slots have no pieces yet).
+    this.armorMounts = { head: new THREE.Group(), chest: new THREE.Group() };
+    this.head.add(this.armorMounts.head);
+    this.torso.add(this.armorMounts.chest);
 
     // Aim rig: both arms (and the gun) pitch together around the shoulders.
     this.rig = new THREE.Group();
@@ -128,6 +133,24 @@ export class BodyRig {
       ...this.arms.flatMap((arm) => [arm.sleeve, arm.handMount]),
       ...this.legs.flatMap((leg) => [leg.legMount, leg.bootMount]),
     ];
+  }
+
+  /** The slots that can wear armor. */
+  armorSlots() {
+    return Object.keys(this.armorMounts);
+  }
+
+  /** Put an armor model on a slot, or pass null to take it off. The model is shared, so it is never disposed here. */
+  setArmor(slot, object) {
+    const mount = this.armorMounts[slot];
+    if (!mount) throw new Error(`No armor mount for slot: ${slot}`);
+    mount.clear();
+    if (object) mount.add(object);
+  }
+
+  /** Hide worn armor without forgetting it (the mech suit has its own parts). */
+  setArmorVisible(visible) {
+    for (const mount of Object.values(this.armorMounts)) mount.visible = visible;
   }
 
   setKit(kit, materials) {

@@ -2,14 +2,22 @@
  * The state message a player sends about themselves ~20 times a second, in short keys
  * (RemotePlayers reads it). Shared by every multiplayer mode so the avatars look the same.
  * The mech suit (see suit-network.js) rides along in it when the player has one in play.
+ * The equipped armor (see armor-network.js) is key `ar`, left out when nothing is equipped.
  */
 
 import { encodeSuit } from '../suit/suit-network.js';
+import { encodeEquipment } from '../armor/armor-network.js';
+import { emptyEquipment } from '../armor/armor-parts.js';
 
 const round2 = (value) => Math.round(value * 100) / 100;
+const NO_ARMOR = encodeEquipment(emptyEquipment());
 
-/** @param suit what MechSuit.networkState() returns (null for no suit) */
-export function poseMessage(player, weapons, suit = null) {
+/**
+ * @param suit what MechSuit.networkState() returns (null for no suit)
+ * @param equipped the ArmorState `equipped` record (null for none)
+ */
+export function poseMessage(player, weapons, suit = null, equipped = null) {
+  const armor = equipped ? encodeEquipment(equipped) : NO_ARMOR;
   return {
     t: 's',
     x: round2(player.pos.x), y: round2(player.pos.y), z: round2(player.pos.z),
@@ -20,5 +28,6 @@ export function poseMessage(player, weapons, suit = null) {
     w: weapons.index, a: round2(weapons.adsBlend), f: weapons.beamOn ? 1 : 0, r: weapons.reloading ? 1 : 0,
     al: player.alive ? 1 : 0, hp: Math.round(player.health),
     ...encodeSuit(suit),
+    ...(armor === NO_ARMOR ? {} : { ar: armor }),
   };
 }

@@ -3,6 +3,8 @@ import { BodyRig } from '../assets/body-rig.js';
 import { HUMANOID_KIT, HUMANOID_MATERIALS } from '../assets/humanoid.js';
 import { createSuitBody, setSuitPart } from '../assets/mech-suit.js';
 import { YBotSkin, loadYBot } from '../assets/y-bot.js';
+import { ArmorWearer } from '../armor/armor-wearer.js';
+import { loadArmorModel } from '../armor/armor-model.js';
 
 /*
  * The turntable in the middle of the character screen: the grey human or the mech suit,
@@ -19,8 +21,8 @@ const DRAG_TURN = 0.012; // radians per pixel dragged
 const BACKGROUND = 0x0a0d18;
 
 export class CharacterPreview {
-  /** @param {{ canvas: HTMLCanvasElement, suitScale: number, selection: Record<string, string>, skinLoader?: Function }} options */
-  constructor({ canvas, suitScale, selection, skinLoader = loadYBot }) {
+  /** @param {{ canvas: HTMLCanvasElement, suitScale: number, selection: Record<string, string>, equipped: Record<string, string | null>, skinLoader?: Function, armorLoader?: Function }} options */
+  constructor({ canvas, suitScale, selection, equipped, skinLoader = loadYBot, armorLoader = loadArmorModel }) {
     this.canvas = canvas;
     this.suitScale = suitScale;
     this.renderer = null;
@@ -48,6 +50,8 @@ export class CharacterPreview {
     this.human = new BodyRig(HUMANOID_MATERIALS);
     this.human.setKit(HUMANOID_KIT, HUMANOID_MATERIALS);
     this.humanSkin = new YBotSkin(this.human, { load: skinLoader });
+    this.armor = new ArmorWearer(this.human, armorLoader, this.humanSkin);
+    this.wearArmor(equipped);
     this.turntable.add(this.human.root);
 
     this.suit = createSuitBody(selection);
@@ -67,6 +71,11 @@ export class CharacterPreview {
     const scale = showSuit ? this.suitScale : 1; // frame the bigger suit from further back
     this.camera.position.set(0, (LOOK_HEIGHT + 0.3) * scale, CAMERA_DISTANCE * scale);
     this.camera.lookAt(0, LOOK_HEIGHT * scale, 0);
+  }
+
+  /** Show the armor in `equipped` on the human (the suit has its own parts). */
+  wearArmor(equipped) {
+    this.armor.wear(equipped);
   }
 
   setPart(slot, id) {

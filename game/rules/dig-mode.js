@@ -32,7 +32,7 @@ export class DigMode {
    * config = CONFIG.dig; hud is the main HUD (damage numbers, banner); scoreboard.feed() prints the activity lines.
    */
   /** `suit` is a function that returns what the other players need to know about your mech suit (MechSuit.networkState). */
-  constructor({ config, net, player, weapons, remotes, world, scene, camera, audio, hud, digHud, scoreboard, suit = () => null }) {
+  constructor({ config, net, player, weapons, remotes, world, scene, camera, audio, hud, digHud, scoreboard, suit = () => null, armor = () => null }) {
     this.config = config;
     this.net = net;
     this.player = player;
@@ -45,6 +45,7 @@ export class DigMode {
     this.digHud = digHud;
     this.scoreboard = scoreboard;
     this.suit = suit;
+    this.armor = armor;
     this.site = new DigSite({ scene, world });
 
     this.active = false;
@@ -168,7 +169,7 @@ export class DigMode {
     this.sendTimer -= dt;
     if (this.sendTimer <= 0 && !this.ended) {
       this.sendTimer += 1 / this.config.sendHz;
-      this.net.sendGame(poseMessage(this.player, this.weapons, this.suit()));
+      this.net.sendGame(poseMessage(this.player, this.weapons, this.suit(), this.armor()));
     }
   }
 

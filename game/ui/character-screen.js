@@ -2,11 +2,13 @@ import { WEAPON_ICONS } from './hud.js';
 import { CONFIG } from '../config.js';
 import { CharacterPreview } from './character-preview.js';
 import { SLOT_LABELS, SUIT_PARTS, SUIT_SLOTS } from '../suit/suit-parts.js';
+import { ARMOR_PARTS, ARMOR_SLOTS, damageReduction } from '../armor/armor-parts.js';
 
 /*
  * The character screen (the I key): the character in the middle, the three weapon slots
  * on the left (hover a slot to open the list of weapons for it, click one to fit it) and
  * the mech suit on the right (equip it, customize each part, set it down in the world).
+ * The ARMOR tab keeps the character in the middle and swaps the suit panel for the armor slots.
  * With developer mode on there is an extra DEV tab that lists every item and part.
  *
  * The game is paused while this is open (the pointer is released).
@@ -18,23 +20,26 @@ const MAX_DPS = 140;
 const MAX_RANGE = 140;
 
 const TAB_CHARACTER = 'character';
+const TAB_ARMOR = 'armor';
 const TAB_DEV = 'dev';
 
-const defaultPreview = ({ canvas, selection }) => new CharacterPreview({ canvas, suitScale: CONFIG.suit.scale, selection });
+const defaultPreview = ({ canvas, selection, equipped }) => new CharacterPreview({ canvas, suitScale: CONFIG.suit.scale, selection, equipped });
 
 export class CharacterScreen {
   /**
    * @param {object} options
    * @param {object} options.weapons the holdable system (loadout, assign, armory, describe)
    * @param {import('../suit/suit-state.js').SuitState} options.suitState
+   * @param {import('../armor/armor-state.js').ArmorState} options.armorState
    * @param {{ canPlace(): boolean, place(): void, canPickUp(): boolean, pickUp(): void, exit(): void }} options.suitActions what the world does with the suit (place and pick up arm a beacon)
    * @param {() => void} options.onResume close the screen and go back to the game
    * @param {boolean} [options.devMode] show the DEV tab
    * @param {(args: object) => object} [options.createPreview] replaces the 3D turntable (tests)
    */
-  constructor({ weapons, suitState, suitActions, onResume, devMode = false, createPreview = defaultPreview }) {
+  constructor({ weapons, suitState, armorState, suitActions, onResume, devMode = false, createPreview = defaultPreview }) {
     this.weapons = weapons;
     this.suitState = suitState;
+    this.armorState = armorState;
     this.suitActions = suitActions;
     this.onResume = onResume;
     this.devMode = devMode;
@@ -47,6 +52,7 @@ export class CharacterScreen {
     this.leftEl = document.getElementById('char-left');
     this.canvas = document.getElementById('char-preview');
     this.suitEl = document.getElementById('char-suit');
+    this.armorEl = document.getElementById('char-armor');
     this.devEl = document.getElementById('char-dev');
     this.mainEl = document.getElementById('char-main');
 
@@ -63,6 +69,10 @@ export class CharacterScreen {
     this.root.addEventListener('pointerover', (event) => this._onHover(event));
     this.leftEl.addEventListener('pointerleave', () => this._hover(-1));
     this.unsubscribe = suitState.onChange(() => { if (this.isOpen) this.render(); });
+    armorState.onChange(() => {
+      this.preview?.wearArmor(armorState.equipped);
+      if (this.isOpen) this.render();
+    });
   }
 
   setDevMode(enabled) {
@@ -79,7 +89,7 @@ export class CharacterScreen {
     this.customizing = false;
     this.isOpen = true;
     this.root.style.display = 'flex';
-    if (!this.preview) this.preview = this.createPreview({ canvas: this.canvas, selection: this.suitState.selection });
+    if (!this.preview) this.preview = this.createPreview({ canvas: this.canvas, selection: this.suitState.selection, equipped: this.armorState.equipped });
     this.render();
     this.preview.start();
   }
@@ -126,11 +136,13 @@ export class CharacterScreen {
     const slot = hit('[data-slot]');
     const gun = hit('[data-gun]');
     const part = hit('[data-part]');
+    const armor = hit('[data-armor-piece]');
     const action = hit('[data-action]');
     if (hit('#char-resume')) this.onResume();
     else if (tab) this.setTab(tab.dataset.tab);
     else if (action) this._runAction(action.dataset.action);
     else if (part) this.fitPart(part.dataset.slotName, part.dataset.part);
+    else if (armor) this.armorState.equip(armor.dataset.armorSlot, armor.dataset.armorPiece || null);
     else if (hit('[data-target]')) this._setDevTarget(Number(hit('[data-target]').dataset.target));
     else if (gun) this.assign(Number(gun.dataset.gun), this.tab === TAB_DEV ? this.devTarget : this.hovered >= 0 ? this.hovered : this.active);
     else if (slot) this.selectSlot(Number(slot.dataset.slot));
@@ -182,9 +194,11 @@ export class CharacterScreen {
   }
 
   render() {
-    this.mainEl.style.display = this.tab === TAB_CHARACTER ? 'grid' : 'none';
+    this.mainEl.style.display = this.tab === TAB_CHARACTER || this.tab === TAB_ARMOR ? 'grid' : 'none';
+    this.suitEl.style.display = this.tab === TAB_ARMOR ? 'none' : 'block';
+    this.armorEl.style.display = this.tab === TAB_ARMOR ? 'block' : 'none';
     this.devEl.style.display = this.tab === TAB_DEV ? 'block' : 'none';
-    this.tabsEl.innerHTML = [[TAB_CHARACTER, 'CHARACTER'], ...(this.devMode ? [[TAB_DEV, 'DEV']] : [])]
+    this.tabsEl.innerHTML = [[TAB_CHARACTER, 'CHARACTER'], [TAB_ARMOR, 'ARMOR'], ...(this.devMode ? [[TAB_DEV, 'DEV']] : [])]
       .map(([id, label]) => `<button class="panel menu-btn${this.tab === id ? ' active' : ''}" data-tab="${id}">${label}</button>`)
       .join('');
 
@@ -195,6 +209,7 @@ export class CharacterScreen {
       .join('');
     this._renderFlyout();
     this._renderSuit();
+    this._renderArmor();
     if (this.tab === TAB_DEV) this._renderDev();
     this.preview?.showSuit(this.customizing || this.suitState.occupied);
   }
@@ -226,6 +241,20 @@ export class CharacterScreen {
     if (!suit.occupied && !suit.placed) buttons.push(button('unequip', 'UNEQUIP'));
     this.suitEl.innerHTML = `<h3>MECH SUIT</h3><p class="meta">${status}</p><div class="btn-row">${buttons.join('')}</div>`
       + (this.customizing ? this._partRows() : this._partSummary());
+  }
+
+  _renderArmor() {
+    const equipped = this.armorState.equipped;
+    const reduction = Math.round(damageReduction(equipped, CONFIG.armor.maxReduction) * 100);
+    const rows = ARMOR_SLOTS.map((slot) => {
+      const piece = (id, name) => `<button class="panel part${equipped[slot] === id ? ' active' : ''}" data-armor-slot="${slot}" data-armor-piece="${id ?? ''}">${name}</button>`;
+      const options = ARMOR_PARTS[slot].length
+        ? [piece(null, 'NONE'), ...ARMOR_PARTS[slot].map((p) => piece(p.id, p.name))].join('')
+        : '<span class="meta">NO PIECES YET</span>';
+      return `<div class="part-row"><div class="tag">${SLOT_LABELS[slot]}</div><div class="part-options">${options}</div></div>`;
+    }).join('');
+    const note = this.suitState.occupied ? 'HIDDEN WHILE YOU ARE IN THE SUIT' : `${reduction}% DAMAGE REDUCTION`;
+    this.armorEl.innerHTML = `<h3>ARMOR</h3><p class="meta">${note}</p>${rows}`;
   }
 
   _partSummary() {

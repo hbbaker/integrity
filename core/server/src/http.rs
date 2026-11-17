@@ -28,6 +28,8 @@ const MIME_TYPES: &[(&str, &str)] = &[
     ("png", "image/png"),
     ("ico", "image/x-icon"),
     ("fbx", "application/octet-stream"),
+    ("obj", "text/plain; charset=utf-8"),
+    ("mtl", "text/plain; charset=utf-8"),
     ("txt", "text/plain; charset=utf-8"),
 ];
 
@@ -260,6 +262,15 @@ mod tests {
         fs::write(root.join("game/bot.fbx"), "x").unwrap();
         let (_, mime) = files.resolve("/game/bot.fbx").unwrap();
         assert_eq!(mime, "application/octet-stream");
+    }
+
+    #[test]
+    fn should_serve_an_obj_model_and_its_mtl_when_they_are_under_the_root() {
+        let (files, root) = rules("obj");
+        fs::write(root.join("game/helmet.obj"), "x").unwrap();
+        fs::write(root.join("game/helmet.mtl"), "x").unwrap();
+        assert_eq!(files.resolve("/game/helmet.obj").unwrap().1, "text/plain; charset=utf-8");
+        assert_eq!(files.resolve("/game/helmet.mtl").unwrap().1, "text/plain; charset=utf-8");
     }
 
     #[test]

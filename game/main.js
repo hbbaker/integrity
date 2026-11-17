@@ -11,6 +11,7 @@ import { Pickups } from './entities/pickups.js';
 import { Hud } from './ui/hud.js';
 import { CharacterScreen } from './ui/character-screen.js';
 import { SuitState } from './suit/suit-state.js';
+import { ArmorState } from './armor/armor-state.js';
 import { MechSuit, BEACON } from './entities/mech-suit-entity.js';
 import { loadDevFlag } from './dev-flag.js';
 import { Cyborg } from './assets/cyborg.js';
@@ -70,6 +71,9 @@ const cyborg = new Cyborg({ scene, player, weapons, rigged: true }); // the Y Bo
 weapons.tp = cyborg;
 const pickups = new Pickups(scene, CONFIG);
 const suitState = new SuitState();
+const armorState = new ArmorState();
+cyborg.wearArmor(armorState.equipped);
+armorState.onChange(() => cyborg.wearArmor(armorState.equipped));
 const scoreboard = new Scoreboard();
 const DIG_MESSAGE_PREFIX = 'dg_'; // the DIG SITE server messages (server/src/dig/lobby.rs)
 const net = new NetClient({
@@ -97,6 +101,7 @@ weapons.enemies = new Targets({ enemies, remotes }); // shots now hit bots and o
 const deathmatch = new Deathmatch({
   config: CONFIG.multiplayer, arenaHalf: CONFIG.arena.half, net, player, weapons, cyborg, remotes, world, scoreboard, hud, pickups,
   suit: () => mechSuit.networkState(),
+  armor: () => armorState.equipped,
 });
 const mpMenu = new MultiplayerMenu({
   onJoin: (name) => net.join(name),
@@ -129,6 +134,7 @@ const digHud = new DigHud();
 const dig = new DigMode({
   config: CONFIG.dig, net, player, weapons, remotes, world, scene, camera, audio, hud, digHud, scoreboard,
   suit: () => mechSuit.networkState(),
+  armor: () => armorState.equipped,
 });
 const digLobby = new DigLobbyScreen({
   onJoin: (name) => net.sendGame({ t: 'dg_join', name }),
@@ -159,6 +165,7 @@ function resumeFromCharacterScreen() {
 const characterScreen = new CharacterScreen({
   weapons,
   suitState,
+  armorState,
   suitActions: {
     canPlace: () => mechSuit.canPlace(),
     place: () => { if (equipBeacon(BEACON.DEPLOY)) resumeFromCharacterScreen(); },
@@ -451,6 +458,11 @@ const devices = new DeviceInput({
   actionInput,
   gateOpen: () => locked && player.alive,
   ignoreEvent: (e) => e.target instanceof HTMLInputElement, // typing a username: no game shortcuts
+  onZoom: (steps) => {
+    if (!player.thirdPerson) return false; // in first person Ctrl + wheel is an ordinary wheel turn
+    player.zoomThirdPerson(steps);
+    return true;
+  },
   onEscape: () => {
     if (osk.isOpen) {
       osk.cancel();

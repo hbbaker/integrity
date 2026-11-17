@@ -91,6 +91,7 @@ export class Player {
     this.alive = true;
     this.thirdPerson = this.thirdPerson ?? false; // your chosen view survives respawns and new matches
     this.tpBlend = this.thirdPerson ? 1 : 0; // 0 = first person eye, 1 = full over-the-shoulder camera
+    this.tpZoom = this.tpZoom ?? 1; // how far back the third-person camera sits, as a multiple of the configured distance; survives respawns too
 
     this.turnWindow = new Array(TURN_WINDOW_STEPS).fill(0); // radians turned in each of the last few steps
     this.turnPending = 0; // radians turned since the last step
@@ -297,13 +298,19 @@ export class Player {
     this.thirdPerson = !this.thirdPerson;
   }
 
+  /** Move the third-person camera closer (`steps` above 0) or further away (below 0), within the configured limits. */
+  zoomThirdPerson(steps) {
+    const t = this.cfg.thirdPerson;
+    this.tpZoom = clamp(this.tpZoom * t.zoomStep ** -steps, t.zoomMin, t.zoomMax);
+  }
+
   /**
    * Over-the-shoulder camera target (unobstructed). Sets `out` to the camera position and
    * returns the distance back from the pivot. Aiming pulls in closer and across the shoulder.
    */
   _orbit(out, pivot, forward, right, yawPos, blend) {
     const t = this.cfg.thirdPerson;
-    const dist = lerp(t.dist, t.aimDist, this.aimBlend) * blend;
+    const dist = lerp(t.dist * this.tpZoom, t.aimDist, this.aimBlend) * blend;
     const shoulder = lerp(t.shoulder, t.aimShoulder, this.aimBlend) * blend;
     pivot.set(yawPos.x, yawPos.y + this.eyeHeight - t.pivotDrop + this.stepSmooth, yawPos.z);
     out.copy(pivot).addScaledVector(forward, -dist).addScaledVector(right, shoulder);
