@@ -1,4 +1,4 @@
-//! The CABLE BOTS server: serves the game's files and runs DIG SITE on the reusable core
+//! The OneShot server: serves the game's files and runs DIG SITE on the reusable core
 //! (core/server). The port is taken from the PORT env var (default 8123); if it is busy,
 //! the next ports are tried.
 

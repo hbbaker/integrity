@@ -1,5 +1,5 @@
 /*
- * CABLE BOTS action table: every command the player can bind, and its default keys and buttons.
+ * OneShot action table: every command the player can bind, and its default keys and buttons.
  * The core reads this through Bindings and ActionInput (core/client/engine); it never names an action.
  *
  * Fields:
@@ -19,7 +19,7 @@ export const ACTIONS = [
   { id: 'left', label: 'MOVE LEFT', group: 'MOVEMENT', hold: 'left', defaults: { keyboard: ['KeyA', 'ArrowLeft'], gamepad: [] } },
   { id: 'right', label: 'MOVE RIGHT', group: 'MOVEMENT', hold: 'right', defaults: { keyboard: ['KeyD', 'ArrowRight'], gamepad: [] } },
   { id: 'sprint', label: 'SPRINT', group: 'MOVEMENT', hold: 'sprintHeld', press: 'sprintPressed', latchWhileMoving: true, defaults: { keyboard: ['ShiftLeft', 'ShiftRight'], gamepad: ['Pad10'] } },
-  { id: 'jump', label: 'JUMP', group: 'MOVEMENT', press: 'jumpPressed', defaults: { keyboard: ['Space'], gamepad: ['Pad0'] } },
+  { id: 'jump', label: 'JUMP', group: 'MOVEMENT', hold: 'jumpHeld', press: 'jumpPressed', defaults: { keyboard: ['Space'], gamepad: ['Pad0'] } },
   { id: 'crouch', label: 'CROUCH / SLIDE', group: 'MOVEMENT', hold: 'crouchHeld', press: 'slidePressed', defaults: { keyboard: ['KeyC'], gamepad: ['Pad1'] } },
   { id: 'leanLeft', label: 'LEAN LEFT', group: 'MOVEMENT', hold: 'leanLeft', defaults: { keyboard: ['KeyQ'], gamepad: ['Pad4'] } },
   { id: 'interact', label: 'USE / ENTER SUIT', group: 'MOVEMENT', press: 'interactPressed', defaults: { keyboard: ['KeyV'], gamepad: [] } },

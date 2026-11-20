@@ -20,6 +20,7 @@
 
 import * as THREE from 'three';
 import { xboxMaterial } from './materials.js';
+import { seededRandom } from '../engine/noise.js';
 
 const DEFAULT_GLOW_COLORS = ['#00f0ff', '#ff2bd6', '#3dff9a', '#8a4dff']; // fibre-optic cyan, magenta, lime, violet
 const GRAIN_STREAKS = 340;
@@ -29,15 +30,10 @@ const TEXTURE_SIZE = 128; // patterns are drawn at `size` (256) so their layout 
 const cache = new Map();
 
 /** A small deterministic random generator, seeded from text. */
-function seededRandom(text) {
+function randomFromText(text) {
   let seed = 2166136261;
   for (let i = 0; i < text.length; i++) seed = Math.imul(seed ^ text.charCodeAt(i), 16777619);
-  return () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  return seededRandom(seed);
 }
 
 function makeCanvas(size) {
@@ -320,7 +316,7 @@ export function surfaceTextures(kind, { color = '#808890', glow = DEFAULT_GLOW_C
   const pattern = PATTERNS[kind];
   if (!pattern) throw new Error(`unknown surface kind "${kind}"`);
   const layers = createLayers(size, color);
-  pattern(layers, seededRandom(`${kind}${color}`), glowColors);
+  pattern(layers, randomFromText(`${kind}${color}`), glowColors);
   const textures = {
     map: toTexture(layers.colour.canvas, { colour: true, repeat }),
     emissive: layers.hasGlow ? toTexture(layers.glow.canvas, { colour: true, repeat }) : null,

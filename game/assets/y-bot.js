@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { HUMANOID_MATERIALS } from './humanoid.js';
+import { bendLimb } from './limb-ik.js';
 
 /*
  * The human: the Mixamo "Y Bot" model, dressed in the game's own original-Xbox materials
@@ -30,6 +31,7 @@ export const Y_BOT_URL = new URL('./y-bot.fbx', import.meta.url).href;
 // so a weapon held at the rig's hand is held at the Y Bot's.
 const FIT = 0.92;
 const CENTIMETRES = 0.01;
+const SPINE_BONES = ['Spine', 'Spine1', 'Spine2'];
 const SPINE_SHARE = [1 / 3, 2 / 3, 1]; // how much of the torso lean each spine bone takes
 const NECK_SHARE = 0.5;
 const KNEE_BEND_FORWARD = 0.9; // radians of knee bend per radian a thigh swings forward (rig-driven legs)
@@ -151,6 +153,7 @@ export class YBotSkin {
       upper: this._boneLength(`${side}Arm`, `${side}ForeArm`),
       fore: this._boneLength(`${side}ForeArm`, `${side}Hand`),
     }]));
+    this.legLengths = { thigh: this._boneLength('LeftUpLeg', 'LeftLeg'), shin: this._boneLength('LeftLeg', 'LeftFoot') };
     this._findFingers();
     this._stretchArms();
     this.ready = true;
@@ -334,7 +337,7 @@ export class YBotSkin {
     const headTurn = this._driverQuaternion(body.head);
 
     this._turn('Hips', hipsTurn);
-    ['Spine', 'Spine1', 'Spine2'].forEach((name, i) => this._turn(name, hipsTurn.clone().slerp(torsoTurn, SPINE_SHARE[i])));
+    SPINE_BONES.forEach((name, i) => this._turn(name, hipsTurn.clone().slerp(torsoTurn, SPINE_SHARE[i])));
     this._turn('Neck', torsoTurn.clone().slerp(headTurn, NECK_SHARE));
     this._turn('Head', headTurn);
 
@@ -378,28 +381,87 @@ export class YBotSkin {
     if (!this.ready || !this.active) return;
     this.body.root.updateWorldMatrix(true, true); // the rig may have moved since `sync`
     this.rootInverse.copy(this.body.root.matrixWorld).invert();
+    this._reachRig(side, worldTarget.clone().applyMatrix4(this.rootInverse), roll);
+  }
+
+  /** `reach` with the target already in rig space. `elbow` (optional) is the way the elbow points; without it, out and down. */
+  _reachRig(side, target, roll, elbow = null) {
     const { upper, fore } = this.armLengths[side];
     const shoulder = this._rigPosition(this.bones.get(boneName(`${side}Arm`)));
-    const toTarget = worldTarget.clone().applyMatrix4(this.rootInverse).sub(shoulder);
-    const distance = THREE.MathUtils.clamp(toTarget.length(), Math.abs(upper - fore) + 0.02, upper + fore - 0.001);
-    const along = toTarget.normalize();
-
     const outward = side === 'Right' ? 1 : -1;
-    const hint = new THREE.Vector3(outward * ELBOW_HINT.out, -1, ELBOW_HINT.back);
-    const pole = hint.addScaledVector(along, -hint.dot(along));
-    if (pole.lengthSq() < 1e-6) pole.set(outward, 0, 0);
-    pole.normalize();
-
-    const alongElbow = (upper * upper - fore * fore + distance * distance) / (2 * distance);
-    const outFromLine = Math.sqrt(Math.max(0, upper * upper - alongElbow * alongElbow));
-    const elbow = shoulder.clone().addScaledVector(along, alongElbow).addScaledVector(pole, outFromLine);
-    const wrist = shoulder.clone().addScaledVector(along, distance);
-    const upperDirection = elbow.clone().sub(shoulder).normalize();
-    const foreDirection = wrist.sub(elbow).normalize();
+    const hint = elbow ?? new THREE.Vector3(outward * ELBOW_HINT.out, -1, ELBOW_HINT.back);
+    const bend = bendLimb(shoulder, target, upper, fore, hint, new THREE.Vector3(outward, 0, 0));
     const palmIn = (side === 'Right' ? 1 : -1) * roll; // a positive roll turns either palm toward the body
-    this._aim(`${side}Arm`, `${side}ForeArm`, upperDirection);
-    this._aim(`${side}ForeArm`, `${side}Hand`, foreDirection, palmIn);
-    this._aim(`${side}Hand`, `${side}HandMiddle1`, foreDirection, palmIn);
+    this._aim(`${side}Arm`, `${side}ForeArm`, bend.upper);
+    this._aim(`${side}ForeArm`, `${side}Hand`, bend.lower, palmIn);
+    this._aim(`${side}Hand`, `${side}HandMiddle1`, bend.lower, palmIn);
+  }
+
+  /* ----------------------------- direct posing ------------------------------ */
+
+  /**
+   * The body's measurements at rest, in rig space (metres), for code that places the hips, feet and hands itself.
+   * Null until the model has loaded.
+   */
+  anatomy() {
+    if (!this.ready) return null;
+    const point = (name) => this.rest.get(boneName(name)).position;
+    return {
+      hipsHeight: point('Hips').y, // the middle of the pelvis: what `hips.offset` in driveBones() moves
+      hipJointHeight: point('LeftUpLeg').y,
+      hipJointHalfWidth: Math.abs(point('LeftUpLeg').x),
+      ankleHeight: point('LeftFoot').y,
+      thighLength: this.legLengths.thigh,
+      shinLength: this.legLengths.shin,
+      legLength: this.legLengths.thigh + this.legLengths.shin,
+      spineHeight: point('Spine').y, // where the chest hinges on the pelvis
+      neckHeight: point('Neck').y,
+      headTopHeight: point('HeadTop_End').y,
+      shoulderHeight: point('LeftArm').y,
+      shoulderHalfWidth: Math.abs(point('LeftArm').x),
+      upperArmLength: this.armLengths.Left.upper,
+      foreArmLength: this.armLengths.Left.fore,
+      armLength: this.armReach('Left'),
+    };
+  }
+
+  /**
+   * Pose the Y Bot directly, in place of sync(): for a body that the rig's pivots do not drive (a pose solver,
+   * a ragdoll). Everything is in rig space (metres; the body faces -Z, +X is its right):
+   *   hips   { offset: Vector3 from the rest position, turn: Quaternion from rest }
+   *   chest, head   Quaternion turns from rest; the spine and the neck share them
+   *   feet   { Left, Right }: { ankle: Vector3, turn: Quaternion (the foot, from rest), knee: Vector3 (the way the knee points) }
+   *   hands  { Left, Right }: { wrist: Vector3, roll (radians the palm turns inward), elbow: optional Vector3 (the way the elbow points) }
+   * A foot or hand that is out of reach goes as far as the limb allows.
+   */
+  driveBones({ hips, chest, head, feet, hands }) {
+    if (!this.ready || !this.active) return;
+    const root = this.body.root;
+    root.updateWorldMatrix(true, true);
+    this.rootInverse.copy(root.matrixWorld).invert();
+
+    const hipsBone = this.bones.get(boneName('Hips'));
+    const place = this.rest.get(boneName('Hips')).position.clone().add(hips.offset);
+    hipsBone.position.copy(hipsBone.parent.worldToLocal(root.localToWorld(place)));
+    hipsBone.updateMatrixWorld(true);
+    this._turn('Hips', hips.turn);
+    SPINE_BONES.forEach((name, i) => this._turn(name, hips.turn.clone().slerp(chest, SPINE_SHARE[i])));
+    this._turn('Neck', chest.clone().slerp(head, NECK_SHARE));
+    this._turn('Head', head);
+    for (const side of SIDES) {
+      this._reachRig(side, hands[side].wrist, hands[side].roll, hands[side].elbow);
+      this._plantFoot(side, feet[side]);
+    }
+  }
+
+  /** Put an ankle on a rig-space point with the knee bent toward `knee`, then turn the foot. */
+  _plantFoot(side, { ankle, turn, knee }) {
+    const { thigh, shin } = this.legLengths;
+    const hip = this._rigPosition(this.bones.get(boneName(`${side}UpLeg`)));
+    const bend = bendLimb(hip, ankle, thigh, shin, knee, new THREE.Vector3(0, 0, -1));
+    this._aim(`${side}UpLeg`, `${side}Leg`, bend.upper);
+    this._aim(`${side}Leg`, `${side}Foot`, bend.lower);
+    this._turn(`${side}Foot`, turn);
   }
 
   /** Where a shoulder joint sits at rest, in rig space. */

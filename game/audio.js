@@ -1,5 +1,5 @@
 /*
- * CABLE BOTS sound effects, built on the core's synth (core/client/audio/audio-engine.js).
+ * OneShot sound effects, built on the core's synth (core/client/audio/audio-engine.js).
  * Press M to mute.
  */
 import { AudioEngine } from '../core/client/audio/audio-engine.js';

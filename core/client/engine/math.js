@@ -6,6 +6,8 @@ export const lerp = (from, to, t) => from + (to - from) * t;
 export const damp = (current, target, rate, dt) => current + (target - current) * (1 - Math.exp(-rate * dt));
 export const easeInOut = (t) => t * t * (3 - 2 * t);
 export const easeOut = (t) => 1 - (1 - t) * (1 - t);
+/** 0 below `from`, 1 above `to`, and an eased blend between them. */
+export const smoothstep = (from, to, value) => easeInOut(clamp((value - from) / (to - from), 0, 1));
 
 export function easeOutBack(t) {
   const c1 = 1.70158;

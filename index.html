@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cable Bots</title>
+<title>OneShot</title>
 <!-- Pixel lettering. If the fonts cannot load (no internet), the system fonts in --font are used. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -134,8 +134,8 @@
   #ping { display: none; position: absolute; left: 50%; bottom: 8px; translate: -50% 0; font-size: 14px; color: #fff;  }
 
   /* ---------- DIG SITE ---------- */
-  #overlay-dig, #overlay-dig-results, #overlay-solo { display: none; cursor: default; }
-  #overlay-solo h2 { animation: none; font-size: 30px; }
+  #overlay-dig, #overlay-dig-results, #overlay-solo, #overlay-ski { display: none; cursor: default; }
+  #overlay-solo h2, #overlay-ski h2 { animation: none; font-size: 30px; }
   #solo-status { min-height: 26px; font-size: 16px; color: var(--amber); }
   #overlay-dig h2, #overlay-dig-results h2 { animation: none; font-size: 30px; }
   #dig-players li.host::after { content: ' \2605 HOST'; color: var(--magenta); font-size: 14px; }
@@ -276,6 +276,32 @@
   #char-resume:hover { background: var(--btn-active); }
   @media (max-width: 1000px) { #char-main { grid-template-columns: 1fr; } #char-flyout { position: static; width: auto; margin: 8px 0 0; } }
   @keyframes bob { from { transform: translateY(0); } to { transform: translateY(-8px); } }
+
+  /* ---------- MOUNTAIN ---------- */
+  #ski-hud { display: none; }
+  body.ski-mode #ski-hud { display: block; }
+  body.ski-mode #health-panel, body.ski-mode #weapon-panel, body.ski-mode #slot-bar, body.ski-mode #top-bar, body.ski-mode #crosshair { display: none; }
+  #ski-dev { display: none; position: absolute; left: 24px; top: 20px; padding: 4px 14px; font-size: 14px; letter-spacing: 1px; color: var(--amber); }
+  #ski-speed-panel { position: absolute; right: 30px; bottom: 30px; padding: 6px 20px 10px; text-align: right; }
+  #ski-speed { font-size: 56px; font-weight: 800; color: var(--cyan); line-height: 1; }
+  #ski-speed-panel small { display: block; font-size: 13px; letter-spacing: 2px; opacity: .8; }
+  #ski-edge { margin-top: 4px; }
+  #ski-edge.held { color: var(--lime); opacity: 1; }
+  #ski-time { position: absolute; top: 16px; left: 50%; translate: -50% 0; padding: 2px 26px; font-size: 32px; font-weight: 800; color: #fff; }
+  #ski-finish { display: none; position: absolute; left: 50%; top: 30%; translate: -50% 0; padding: 8px 34px; font-size: 44px; font-weight: 800; color: var(--lime); white-space: nowrap; }
+  #ski-alert { display: none; position: absolute; left: 50%; top: 42%; translate: -50% 0; padding: 4px 26px; font-size: 34px; font-weight: 800; color: var(--amber); white-space: nowrap; }
+  #ski-style-panel { position: absolute; left: 24px; bottom: 30px; padding: 4px 18px; font-size: 14px; letter-spacing: 2px; }
+  #ski-style-panel b { font-size: 30px; margin-left: 12px; color: var(--lime); }
+  #ski-trick { display: none; position: absolute; left: 50%; top: 22%; translate: -50% 0; padding: 4px 26px; font-size: 26px; font-weight: 800; color: var(--cyan); white-space: nowrap; }
+  #ski-load { display: none; position: absolute; left: 50%; bottom: 74px; translate: -50% 0; width: 260px; padding: 4px 12px 8px; }
+  #ski-load small { font-size: 12px; letter-spacing: 2px; opacity: .8; }
+  #ski-load-bar { height: 10px; margin-top: 3px; background: rgba(255, 255, 255, .15); }
+  #ski-load-fill { height: 100%; width: 0; background: var(--cyan); }
+  #ski-load.over #ski-load-fill { background: var(--red); }
+  #ski-load.stomp { border-color: var(--lime); }
+  #ski-keys { position: absolute; left: 50%; bottom: 14px; translate: -50% 0; padding: 4px 18px; font-size: 13px; letter-spacing: 1.5px; opacity: .85; white-space: nowrap; }
+  #overlay-ski .menu-btn.active { border-color: var(--lime); box-shadow: 0 0 8px var(--lime); }
+  #ski-rides .menu-btn { font-size: 20px; padding: 8px 26px; }
 </style>
 </head>
 <body>
@@ -295,6 +321,17 @@
   <div id="banner"></div>
 
   <div id="mini-board"></div>
+  <div id="ski-hud">
+    <div id="ski-dev" class="panel"></div>
+    <div id="ski-time" class="panel">0:00.0</div>
+    <div id="ski-finish" class="panel"></div>
+    <div id="ski-alert" class="panel"></div>
+    <div id="ski-style-panel" class="panel">STYLE<b id="ski-style">0</b></div>
+    <div id="ski-trick" class="panel"></div>
+    <div id="ski-load" class="panel"><small>GRAVITY</small><div id="ski-load-bar"><div id="ski-load-fill"></div></div></div>
+    <div id="ski-speed-panel" class="panel"><span id="ski-speed">0</span><small>KM/H</small><small id="ski-edge"></small></div>
+    <div id="ski-keys" class="panel">A / D CARVE &nbsp;·&nbsp; W PUSH, THEN TUCK &nbsp;·&nbsp; S BRAKE ON YOUR EDGE &nbsp;·&nbsp; SPACE POP (HOLD, RELEASE) &nbsp;·&nbsp; R START AGAIN<br>IN THE AIR: FLICK THE MOUSE OR A / D TO SPIN &nbsp;·&nbsp; FLICK UP / DOWN OR W / S TO FLIP &nbsp;·&nbsp; SHIFT + W A S D GRAB &nbsp;·&nbsp; SPACE JUST BEFORE YOU LAND: STOMP</div>
+  </div>
   <div id="dig-hud">
     <div id="dig-timer" class="panel">8:00</div>
     <div id="dig-board" class="panel"></div>
@@ -333,13 +370,14 @@
 </div>
 
 <div id="overlay-start" class="overlay">
-  <h1>CABLE BOTS</h1>
+  <h1>ONESHOT</h1>
   <h2 id="start-sub">CHOOSE A MODE</h2>
   <div id="mode-buttons" class="btn-row">
     <button id="mode-sandbox" class="panel menu-btn">SANDBOX<small>SOLO MODES · PICK ONE</small></button>
     <button id="mode-waves" class="panel menu-btn">WAVE GAME<small>SURVIVE THE BOTS</small></button>
     <button id="mode-multiplayer" class="panel menu-btn">MULTIPLAYER<small>DEATHMATCH ON YOUR NETWORK</small></button>
     <button id="mode-dig" class="panel menu-btn">DIG SITE<small>FIND THE UTILITIES · DIG · DON'T STRIKE</small></button>
+    <button id="mode-ski" class="panel menu-btn">MOUNTAIN<small>SKI · SNOWBOARD · PICK A COURSE</small></button>
     <button id="mode-settings" class="panel menu-btn">SETTINGS<small>CONTROLS · SENSITIVITY</small></button>
   </div>
   <div id="pause-buttons" class="btn-row" style="display:none">
@@ -386,6 +424,19 @@
   </div>
   <div id="solo-status"></div>
   <button id="solo-back" class="panel menu-btn" data-back>BACK</button>
+</div>
+
+<div id="overlay-ski" class="overlay">
+  <h1>MOUNTAIN</h1>
+  <h2>PICK A RIDE AND A COURSE</h2>
+  <div id="ski-rides" class="btn-row">
+    <button id="ski-ride-skis" class="panel menu-btn">SKIS</button>
+    <button id="ski-ride-board" class="panel menu-btn">SNOWBOARD</button>
+  </div>
+  <div class="btn-row">
+    <button id="ski-freeride" class="panel menu-btn">FREERIDE<small>OFF-PISTE · TREES · CLIFFS</small></button>
+  </div>
+  <button id="ski-back" class="panel menu-btn" data-back>BACK</button>
 </div>
 
 <div id="overlay-dig" class="overlay">
@@ -463,7 +514,8 @@
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/",
+  "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.19.3/rapier.mjs"
 } }
 </script>
 <script type="module" src="game/main.js"></script>

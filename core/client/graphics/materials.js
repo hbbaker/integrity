@@ -166,6 +166,19 @@ export function createHazardTexture() {
   return toTexture(canvas);
 }
 
+/** Packed snow: near white, with soft blue hollows and a fine grain so that movement over it shows as speed. Tile = 8 m. */
+export function createSnowTexture() {
+  const size = 256;
+  const canvas = makeCanvas(size);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#f3f6fa';
+  ctx.fillRect(0, 0, size, size);
+  addBlotches(ctx, size, 60, 'rgba(140,168,206,0.16)', 26); // wind hollows
+  addBlotches(ctx, size, 30, 'rgba(255,255,255,0.5)', 14); // drift crests
+  addGrain(ctx, size, 16);
+  return toTexture(canvas);
+}
+
 /**
  * Sky dome: a big inside-out sphere with a vertical gradient and a soft sun glow.
  */

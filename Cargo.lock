@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "cable-bots-server"
+name = "oneshot-server"
 version = "0.1.0"
 dependencies = [
  "server-core",

@@ -81,6 +81,14 @@ function createBoxGeometry(width, height, depth, tileSize) {
   return geometry;
 }
 
+const SUN_OFFSET = { x: 24, y: 42, z: 14 }; // where the sun stands from the point it lights, for a shadow box of SUN_REFERENCE_REACH
+const SUN_REFERENCE_REACH = 40; // metres: the shadow box (each way) of the small arena
+const SUN_FAR = 120; // the shadow camera's depth for the reference reach
+const SUN_FAR_MARGIN = 40; // metres of depth added at any reach
+const SHADOW_MAP_SMALL = 1024;
+const SHADOW_MAP_LARGE = 2048;
+const LARGE_LEVEL_HALF = 40; // a level wider than this (each way) gets the large shadow map
+const SUN_MARGIN = 10; // metres the shadow box reaches past the walls
 const WALL_LIGHT_HEIGHT_SHARE = 0.62; // how high up the wall the light runs, as a share of its height
 const WALL_LIGHT_INSET = 0.03; // metres in front of the wall face
 const WALL_LIGHT_THICKNESS = 0.1; // metres
@@ -111,7 +119,8 @@ export class World {
 
   /**
    * (Re)build the level for a mode: 'waves' = the small arena, 'sandbox' = the big open map,
-   * 'dig' = an empty walled site that dig-world.js fills in.
+   * 'dig' = an empty walled site that dig-world.js fills in, 'mountain' = nothing at all (the
+   * course in game/ski/ brings its own ground, trees and bounds).
    * Everything solid lives in one group so a rebuild is a clean swap. The caller must
    * re-render the (static) shadow map afterwards: renderer.shadowMap.needsUpdate = true.
    */
@@ -127,24 +136,35 @@ export class World {
     const area = { sandbox: this.config.sandbox, dig: this.config.dig }[mode] ?? this.config.arena;
     this.half = area.half;
     this._fitSun();
+    if (mode === 'mountain') return;
     if (mode !== 'dig') this._buildFloor(this.group); // the dig site builds its own ground, tile by tile, so tiles can be dug out
     this._buildWalls(this.group, area.wallHeight);
     if (mode === 'sandbox') this._buildSandboxProps(this.group);
     else if (mode !== 'dig') this._buildProps(this.group); // the dig site brings its own props (dig-world.js)
   }
 
+  /** The sun's shadow box covers the whole walled level. */
   _fitSun() {
+    this.aimSun(0, 0, 0, this.half + SUN_MARGIN, this.half > LARGE_LEVEL_HALF ? SHADOW_MAP_LARGE : SHADOW_MAP_SMALL);
+  }
+
+  /**
+   * Point the sun's shadow box at (x, y, z). The box covers `reach` metres each way, on a shadow map of
+   * `mapSize` pixels. The sun keeps its direction. The caller must re-render the (static) shadow map.
+   */
+  aimSun(x, y, z, reach, mapSize) {
     const sun = this.sun;
-    const k = (this.half + 10) / 40; // 1 for the small arena
-    sun.position.set(24 * k, 42 * k, 14 * k);
+    const k = reach / SUN_REFERENCE_REACH;
+    sun.position.set(x + SUN_OFFSET.x * k, y + SUN_OFFSET.y * k, z + SUN_OFFSET.z * k);
+    sun.target.position.set(x, y, z);
+    sun.target.updateMatrixWorld(); // the target is not in the scene, so nothing else updates it
     const cam = sun.shadow.camera;
-    cam.left = cam.bottom = -(this.half + 10);
-    cam.right = cam.top = this.half + 10;
-    cam.far = 120 * k + 40;
+    cam.left = cam.bottom = -reach;
+    cam.right = cam.top = reach;
+    cam.far = SUN_FAR * k + SUN_FAR_MARGIN;
     cam.updateProjectionMatrix();
-    const size = this.half > 40 ? 2048 : 1024;
-    if (sun.shadow.mapSize.x !== size) {
-      sun.shadow.mapSize.set(size, size);
+    if (sun.shadow.mapSize.x !== mapSize) {
+      sun.shadow.mapSize.set(mapSize, mapSize);
       if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
     }
   }

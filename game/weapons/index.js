@@ -1,5 +1,5 @@
 /*
- * CABLE BOTS weapons. Every weapon lives in its own file in this folder and exports a `weapon`:
+ * OneShot weapons. Every weapon lives in its own file in this folder and exports a `weapon`:
  *
  *   config    its entry in CONFIG.weapons.list (damage, ammo, recoil, sights: all its numbers)
  *   holdable  { type, class }: the Holdable class that runs it, under the name config.type uses

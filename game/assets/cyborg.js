@@ -284,6 +284,9 @@ export class Cyborg {
     this.flash = new MuzzleFlash();
     if (!flashLight) this.flash.group.remove(this.flash.light); // many remote players: no extra scene lights
     this.flashHost = null;
+    // Set to a function (cyborg, dt, alpha) to pose the body yourself each frame, in place of the walk, aim and hold
+    // poses below. It may turn `root`, move `shadow`, and pose the bones through `skin`. Null gives the body back.
+    this.poser = null;
 
     this._v = new THREE.Vector3();
     this._w = new THREE.Vector3();
@@ -368,6 +371,11 @@ export class Cyborg {
     );
     const idx = weapons.index;
     if (idx !== this.heldIndex) this._showGun(idx);
+    if (this.poser) { // something else poses the whole body this frame (the mountain mode's rider)
+      this.poser(this, dt, alpha);
+      this.group.updateMatrixWorld(true);
+      return;
+    }
     const gun = this.guns[idx];
     const armed = !!gun;
 

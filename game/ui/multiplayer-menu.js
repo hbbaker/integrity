@@ -6,6 +6,7 @@ import { isValidName, JOIN_ERRORS, NET_STATUS } from '../../core/client/net/net-
  * the connection status and roster.
  */
 
+// Keeps the game's former name (cable-bots) so players keep their saved username.
 const STORAGE_KEY = 'cable-bots-username';
 const STATUS_TEXT = {
   [NET_STATUS.IDLE]: '',

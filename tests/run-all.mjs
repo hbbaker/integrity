@@ -14,7 +14,7 @@ import path from 'node:path';
 import { ROOT } from './support/modules.mjs';
 
 const TEST_PORT = '18123';
-const SERVER_BINARY = path.join(ROOT, 'target/release/cable-bots-server');
+const SERVER_BINARY = path.join(ROOT, 'target/release/oneshot-server');
 const SERVER_MATCH_SECONDS = '14';
 const SERVER_START_MS = 800;
 

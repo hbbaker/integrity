@@ -1,5 +1,5 @@
 /*
- * CABLE BOTS player settings: sliders, switches and choices for the settings screen.
+ * OneShot player settings: sliders, switches and choices for the settings screen.
  * `default` of the sensitivities is a multiplier of the value in game/main.js CONFIG, so 1 = as designed.
  * settings-apply.js turns the values into CONFIG changes.
  */

@@ -1,18 +1,19 @@
 # Core
 
-The reusable part of this repository. Everything under `core/` knows nothing about CABLE BOTS: it
+The reusable part of this repository. Everything under `core/` knows nothing about OneShot: it
 never imports from `game/` (a test, `tests/core-boundary.test.mjs`, fails if it does). The game gets
 its behaviour into the core through config objects, injected classes and registries.
 
 ```
 core/
   client/             browser code (ES modules, no build step; Three.js comes from your import map)
-    engine/           stage (renderer, scene, camera), loop, input, bindings, settings, gamepad, math
-    graphics/         materials and procedural textures, sky, particles, tracers, muzzle flash
+    engine/           stage (renderer, scene, camera), loop, input, bindings, settings, gamepad, math, noise, spring, heightfield
+    graphics/         materials and procedural textures, sky, particles, tracers, muzzle flash, terrain mesh
     audio/            a small Web Audio synth to extend with your own sounds
     character/        first-person player controller, health regeneration, spawn picking
     combat/           Holdable, the hands (HoldableSystem), Weapon and its subclasses
     net/              WebSocket client for the server core's hub
+    physics/          rigid bodies and joints (Rapier, loaded on demand from your import map)
     modes/            GameMode and ModeManager
   server/             Rust crate `server-core`: HTTP files, WebSocket, JSON, RNG, the hub and GameServer
   examples/           minimal-game.js: a whole (tiny) game on the core, run by a test

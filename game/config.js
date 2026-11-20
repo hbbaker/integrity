@@ -248,6 +248,278 @@ export const CONFIG = {
     ],
   },
 
+  // MOUNTAIN (see game/rules/ski-run.js): ride a course on skis or on a board. The courses themselves are in game/ski/.
+  ski: {
+    fog: { near: 80, far: 420 }, // a mountain is seen from far away
+    terrain: {
+      cell: 1, // metres between ground heights: the snow you see and the snow you ride use the same grid
+      chunkCells: 40, // cells along one side of a terrain chunk (one draw call each)
+      textureTile: 8, // metres one repeat of the snow texture covers; a chunk must be a whole number of tiles
+      snowColor: 0xe6edf5,
+      rockColor: 0x6f7378, // steep ground shows rock
+      rockStart: 0.72, // the upward part of the ground normal where rock starts to show (about 44 degrees of slope) ...
+      rockFull: 0.55, // ... and where it is all rock (about 57 degrees)
+    },
+    // The chase camera (see game/ski/chase-camera.js).
+    camera: {
+      far: 460, // draw distance in metres (the stage's own is shorter)
+      distance: 6.5, // metres from the rider; Ctrl + wheel scales it, as in third person
+      lookHeight: 1.3, // metres above the rider's feet that the camera orbits
+      lead: 4, // metres past the rider that the camera looks at, so more of the slope ahead is in view
+      pitch: 0.3, // radians above the rider's level where the camera rests
+      minPitch: -0.15,
+      maxPitch: 1.25,
+      clearance: 1.1, // metres the camera stays above the snow
+      sightMargin: 0.4, // metres the line from the camera to the rider clears the ground by
+      followRate: 9, // how fast the camera closes on its place (per second); lower trails further behind at speed
+      returnDelay: 0.9, // seconds after the last look input before the camera swings back behind the rider
+      returnRate: 2.5, // how fast it swings back at returnFullSpeed (per second); slower when the rider is slow, never at rest
+      returnFullSpeed: 12, // m/s
+      speedFov: 14, // degrees the view widens at speedFovFull ...
+      speedFovFull: 38, // ... m/s
+      fovRate: 4, // how fast the view widens and narrows (per second)
+    },
+    // How the ride moves (see game/ski/rider.js). The numbers under `rides` differ between skis and a board.
+    rider: {
+      gravity: 13, // m/s^2: stronger than real, so a run gets up to speed quickly
+      friction: 0.035, // snow friction, as a share of the rider's weight
+      stillFriction: 0.14, // ... for a ride at rest: it holds on slopes up to about 8 degrees, until you push
+      stillSpeed: 0.4, // m/s: slower than this the ride counts as at rest
+      drag: 0.007, // air drag standing up: with the slope it sets the top speed (about 28 m/s on 27 degrees)
+      tuckDrag: 0.0038, // ... and in a full tuck (about 39 m/s)
+      airDrag: 0.002, // drag while in the air
+      maxSpeed: 50, // m/s: nothing goes faster than this
+      brakeDecel: 9, // m/s^2 at full brake
+      pushSpeed: 5, // m/s: below this, "tuck" pushes off (poles, or a skate with the board)
+      pushAccel: 4, // m/s^2
+      minTurnSpeed: 3, // m/s: below this the turn rate no longer grows
+      edgeFullSpeed: 12, // m/s at which a full steer puts the ride fully on its edge
+      mountainEdgeCarve: 0.3, // how far onto an edge the ride must be, as a share of how far it can roll at its speed, for that edge to count as the one it is on
+      mountainEdgeSlope: 0.08, // with the ride flat: how much its side must face up the hill (the sine of the tilt) for that edge to count
+      weathervane: 2, // how fast the ride swings round to point the way it travels (per second), when not steered
+      weathervaneMinSpeed: 1.5, // m/s: slower than this the ride keeps pointing where it was put
+      // Pop and air (see Rider._pop, _rotateInAir, _land).
+      popChargeTime: 0.5, // seconds the pop control must be held for a full pop
+      popSpeedMin: 2.6, // m/s off the snow for a tap ...
+      popSpeedMax: 6, // ... and for a full charge (about 1.4 m of height on level ground)
+      popLate: 0.12, // seconds after the ride leaves the snow in which a release still pops (a pop timed on a lip)
+      flickSpin: 7, // radians per second of spin from one full flick sideways
+      flickFlip: 7.5, // ... of flip from one full flick up or down
+      airSpinAccel: 9, // radians per second, each second, while a direction is held in the air
+      airFlipAccel: 10,
+      maxSpinRate: 14,
+      maxFlipRate: 13,
+      landFlipTolerance: 0.75, // radians from the right way up at which a landing still holds
+      landSpinTolerance: 0.7, // radians from pointing along the path (forward or backward)
+      // Edge catching (see Rider._watchForCatch and docs/adr/0010).
+      catchMinSpeed: 6, // m/s: slower than this an edge never catches
+      catchWarn: 0.45, // share of the way to a catch at which the HUD warns
+      steerSet: 0.3, // how far the steering (0..1) must be to one side to count as demanding that edge
+      // The wrong edge for the slope: the ride is set on its downhill edge and the snow tilts sideways under it by more than
+      // wrongEdgeSlope (the sine of the tilt). 0.3 is a 30 degree slope with the ride more than 37 degrees off the fall line,
+      // or a 20 degree slope with it more than 61 degrees off. On gentler slopes it never counts.
+      wrongEdgeSlope: 0.3,
+      wrongEdgeGrace: 0.25, // seconds on the wrong edge before it catches, with nothing earned: enough only for a small turn
+      // A held edge earns more grace for the next edge (see Rider._trackEdgeHold): nothing below edgeHoldMin seconds on
+      // the old edge, all of wrongEdgeBonus at edgeHoldFull. Time spent flat between the edges takes the hold away again.
+      edgeHoldMin: 0.3,
+      edgeHoldFull: 0.9,
+      wrongEdgeBonus: 0.6, // seconds: with a full hold the grace is 0.85 s, enough for a wide turn on a steep slope
+      // The other edge during a brake: a load, in metres of sideways travel on the leading edge.
+      catchRecover: 0.08, // load that drains each second
+      skidSlip: 0.8, // share of the speed that is sideways in a full brake
+      snapDistance: 0.3, // metres the snow may drop away under the ride and still hold it (ripples, gentle rolls) ...
+      lookAhead: 0.12, // ... measured this many seconds ahead along a free flight: further below than that, the ride is in the air
+      alignRate: 14, // how fast the ride tilts to a new slope (per second)
+      bodyRadius: 0.35, // metres: the rider, for hitting trees and rocks
+      bonkBounce: 0.2, // share of the speed into a tree or rock that comes back out
+      bonkKeep: 0.45, // share of all speed kept after such a hit
+      edgeMargin: 3, // metres from the edge of the course where the rider stops
+    },
+    rides: {
+      skis: {
+        maxLateralAccel: 15, // m/s^2 a turn can pull: higher turns tighter at speed
+        maxTurnRate: 2.8, // radians per second, at low speed
+        grip: 11, // how fast sideways speed dies (per second): higher carves, lower drifts
+        edgeRate: 9, // how fast the ride goes from one edge to the other (per second)
+        startEdge: -1, // the edge the ride counts as being on before it has turned: -1 left, +1 right
+        catchLimit: 0.08, // brake load at which the leading edge catches: higher forgives more
+        edgeChangeTime: 0.08, // seconds the steering must be neutral between one edge and the other at speed
+      },
+      // Surfier: wider turns, slower from edge to edge. toeEdge: the side the toes are on (+1 right: a regular stance). It starts heelside.
+      board: { maxLateralAccel: 12.5, maxTurnRate: 2.3, grip: 8, edgeRate: 6.5, startEdge: -1, toeEdge: 1, catchLimit: 0.1, edgeChangeTime: 0.1 },
+    },
+    // Style points (see game/ski/tricks.js) and the flick that starts a spin or a flip (core/client/engine/flick-detector.js).
+    tricks: {
+      pointsPerHalfSpin: 100, // each 180 degrees
+      pointsPerFlip: 400,
+      pointsPerGrab: 150,
+      pointsPerGrabSecond: 200, // more for a grab held longer ...
+      grabMaxTime: 1.5, // ... up to this many seconds
+      grabMinTime: 0.2, // seconds a grab must be held to count
+      comboBonus: 0.5, // each extra kind of trick (spin, flip, grab) in one air time adds this share
+      switchBonus: 0.25, // a landing backward adds this share
+      bannerTime: 2.5, // seconds the name of a landed trick stays on the screen
+      flick: {
+        window: 0.1, // seconds the mouse or stick movement is added up over
+        threshold: 45, // movement (mouse pixels) that counts as a flick
+        full: 220, // movement of a full-strength flick
+        cooldown: 0.18, // seconds before the next flick can start
+      },
+    },
+    // The landing (see game/ski/landing.js). The gravity load is the greatest height above the snow that the rider had in the air.
+    landing: {
+      crashLimit: 4.5, // metres of load, after the stomp, at which the rider goes down: a lip is safe, a cliff band is not
+      sketchyShare: 0.7, // share of the limit from which a landing is sketchy
+      sketchyKeep: 0.65, // share of the speed kept after a sketchy landing
+      stompAbsorb: 3, // metres a stomp takes away
+      absorbPerStyle: 0.004, // metres more for each style point of the air time ...
+      styleAbsorbMax: 6, // ... up to this many
+      stompWindow: 0.18, // seconds before the snow in which the stomp counts
+      windowPerStyle: 0.0002, // seconds more for each style point ...
+      stompWindowMax: 0.6, // ... up to this
+      stompMinLoad: 1.5, // metres of height from which a stomp is worth the name
+      alignPenalty: 2.5, // metres added for a landing at the edge of the tolerance for a flip, and again for a spin; no stomp takes them away
+      stompedBonus: 0.5, // share of extra style points for a stomped landing
+      sketchyPoints: 0.5, // share of the style points a sketchy landing keeps
+    },
+    // The rider's body (see game/ski/pose-solver.js). Positions are metres in the ride's frame: +X right, +Y up, -Z ahead.
+    pose: {
+      blendRate: 8, // how fast the body moves between stances (per second)
+      maxEdge: 0.7, // radians the ride rolls onto its edge in a full turn
+      inclineShare: 0.85, // how much of that roll the whole body leans with
+      angulation: 0.45, // share of the lean that the chest takes back, to stay over the ride
+      headLevel: 0.75, // share of the lean that the head takes back, to keep the eyes level
+      headIntoTurn: 0.3, // radians the head turns into a full turn
+      skidChestShare: 0.4, // share of the ride's swing across the slope (a brake) that the chest follows; the head keeps looking ahead
+      headLeanShare: 0.25, // share of the torso's forward lean that the head follows
+      hipsLeanShare: 0.35, // share of the torso's forward lean that the hips take
+      kneeIntoTurn: 0.35, // how far the knees drive into a full turn
+      airExtend: 0.07, // metres the legs lengthen in the air
+      airArmLift: 0.12, // metres the hands rise in the air ...
+      airArmSpread: 0.1, // ... and move apart
+      popCrouch: 0.2, // metres the hips sink at a full pop charge
+      // The landing: the body folds by how hard it came down (the share of the crash limit that was left), then comes back up.
+      landing: { crouch: 0.3, lean: 0.35, kick: 24, frequency: 2.2, damping: 0.75 }, // metres and radians at a full load; kick sets how fast it folds
+      // Tricks: how the body shows a spin, a flip and a grab.
+      trick: {
+        tuckLift: 0.24, // metres the ride comes up under the body in a full tuck (a fast spin or flip, or a grab)
+        tuckSpin: 9, // radians per second of spin at which the tuck is full ...
+        tuckFlip: 8, // ... and of flip
+        spinTwist: 0.55, // radians the chest leads a full-speed spin
+        headTwist: 0.8, // ... and the head
+        maxSpin: 14, // the spin rate that counts as full speed here
+        grabRate: 12, // how fast a hand goes to a grab and back (per second)
+        grabLift: 0.3, // metres more that the ride comes up in a grab ...
+        grabLean: 0.75, // ... and radians more that the torso folds down to it
+      },
+      sway: {
+        frequency: 2.4, // cycles per second: how quickly the upper body catches up
+        damping: 0.6, // below 1: it overshoots a little before it settles
+        perAccel: 0.012, // radians of sway for each m/s^2
+        max: 0.3, // radians
+        handShare: 0.5, // metres the hands move for each radian of sway
+      },
+      skis: {
+        rideHalfWidth: 0.2, // metres from the middle of the ride to its outer edge
+        feet: { Left: { x: -0.14, z: 0, yaw: 0 }, Right: { x: 0.14, z: 0, yaw: 0 } },
+        bodyYaw: 0, // radians the hips are turned away from straight ahead
+        chestYaw: 0,
+        kneeSplay: 0.08, // radians each knee points out from its toes
+        tipLead: 0.09, // metres the inside ski runs ahead in a full turn
+        hipDrop: 0.1, // metres below standing height
+        tuckHipDrop: 0.36,
+        hipBack: 0.12, // metres the hips move back for each radian the torso folds forward
+        lean: 0.32, // radians the torso folds forward
+        tuckLean: 1.05,
+        brakeHipDrop: 0.12, // extra, at full brake
+        brakeLeanBack: 0.1,
+        skidYaw: 0.95, // radians the skis swing across the slope at full brake (a hockey stop), tails toward the mountain edge's side
+        brakeEdge: 0.4, // radians the ride rolls onto the mountain edge at full brake
+        palmRoll: 1.1, // radians the palms turn in (around a pole grip)
+        // Grabs: which hand, and the point of the ride it takes (in the ride's frame).
+        grabs: {
+          indy: { hand: 'Right', point: { x: 0.2, y: 0.06, z: 0.05 } }, // outside of the right ski, at the boot
+          mute: { hand: 'Left', point: { x: 0.08, y: 0.08, z: -0.2 } }, // across to the right ski, ahead of the boot
+          nose: { hand: 'Left', point: { x: -0.14, y: 0.06, z: -0.38 } }, // the left ski, ahead of the boot
+          tail: { hand: 'Right', point: { x: 0.14, y: 0.06, z: 0.2 } }, // the right ski, behind the boot
+        },
+        poleRest: { x: 0.12, y: -0.8, z: 0.58 }, // the way a pole points from the right hand (mirrored for the left): down and back
+        poleTuck: { x: 0.05, y: -0.2, z: 0.98 }, // ... and in a tuck: back along the body
+        // Wrists from the middle of the pelvis, in the chest's own frame.
+        hands: { Left: { x: -0.3, y: 0.16, z: -0.34 }, Right: { x: 0.3, y: 0.16, z: -0.34 } },
+        tuckHands: { Left: { x: -0.1, y: 0.4, z: -0.3 }, Right: { x: 0.1, y: 0.4, z: -0.3 } },
+      },
+      board: { // regular stance: the left foot leads and the body faces the right
+        rideHalfWidth: 0.14,
+        feet: { Left: { x: 0, z: -0.26, yaw: -1.31 }, Right: { x: 0, z: 0.26, yaw: -1.68 } }, // toes to the right; the front foot opens toward the nose
+        bodyYaw: -1.15,
+        chestYaw: -0.75, // the chest opens toward the way of travel
+        kneeSplay: 0,
+        tipLead: 0,
+        hipDrop: 0.14,
+        tuckHipDrop: 0.36,
+        hipBack: 0.1,
+        lean: 0.14,
+        tuckLean: 0.5,
+        brakeHipDrop: 0.14,
+        brakeLeanBack: 0.2,
+        skidYaw: 1.0, // radians the board swings across the slope at full brake: nose right for a toeside brake, left for heelside
+        brakeEdge: 0.45,
+        palmRoll: 0,
+        grabs: { // regular stance: the left hand is the front hand, and the toes are on the right edge
+          indy: { hand: 'Right', point: { x: 0.15, y: 0.03, z: 0.04 } }, // back hand, toe edge, between the feet
+          mute: { hand: 'Left', point: { x: 0.15, y: 0.03, z: -0.06 } }, // front hand, toe edge
+          nose: { hand: 'Left', point: { x: 0.06, y: 0.08, z: -0.46 } },
+          tail: { hand: 'Right', point: { x: 0.08, y: 0.08, z: 0.4 } },
+        },
+        hands: { Left: { x: -0.4, y: 0.22, z: -0.1 }, Right: { x: 0.4, y: 0.22, z: -0.1 } },
+        tuckHands: { Left: { x: -0.24, y: 0.2, z: -0.28 }, Right: { x: 0.3, y: 0.3, z: 0.05 } },
+      },
+    },
+    // A crash: the rider becomes a ragdoll in the physics world (see game/ski/ragdoll.js), then gets up where it stops.
+    crash: {
+      minTime: 1.2, // seconds the rider stays down at least
+      maxTime: 6, // ... and at most
+      stillSpeed: 0.7, // m/s: slower than this the body counts as stopped ...
+      stillTime: 0.6, // ... once it has been for this long
+      legsKeep: 0.45, // share of the speed the legs keep at an edge catch: the snow holds them and the body goes over
+      tossUp: 1.6, // m/s the upper body is thrown up ...
+      tossSide: 0.22, // ... and toward the side of the caught edge, as a share of the speed
+      body: {
+        density: 950, // kg per cubic metre
+        friction: 0.6, // on snow: enough to stop on all but the steepest faces
+        linearDamping: 0.08,
+        angularDamping: 1.6, // stops limbs from spinning like propellers
+        radius: { pelvis: 0.13, chest: 0.15, head: 0.1, thigh: 0.075, shin: 0.06, arm: 0.045 }, // metres
+      },
+      // What comes off (skis, poles) or stays on (a board): boxes in the physics world.
+      loose: {
+        density: 500,
+        friction: 0.12, // a ski slides far
+        linearDamping: 0.05,
+        angularDamping: 0.8,
+        spin: 5, // radians per second a loose ski or pole tumbles at the start
+        scatter: 1.8, // m/s it is thrown out to its side
+        // The box of each thing, in its model's own frame (metres): half its size each way, and where its middle is.
+        ski: { halfSize: { x: 0.05, y: 0.02, z: 0.85 }, centre: { x: 0, y: 0.02, z: -0.07 } },
+        pole: { halfSize: { x: 0.015, y: 0.57, z: 0.015 }, centre: { x: 0, y: -0.57, z: 0 } },
+        board: { halfSize: { x: 0.14, y: 0.02, z: 0.72 }, centre: { x: 0, y: 0.01, z: 0 } },
+      },
+      ground: {
+        friction: 0.6,
+        halfCells: 28, // the physics ground is a square this many grid cells each way from the body ...
+        marginCells: 8, // ... rebuilt around the body when it comes this near the edge
+      },
+    },
+    // The shadow map follows the rider (the sun's shadows are static in the other modes).
+    shadow: {
+      reach: 90, // metres each way from the rider that cast shadows
+      step: 16, // metres the rider moves before the shadows are drawn again
+      mapSize: 2048,
+    },
+  },
+
   // Controller support (see gamepad.js). Sticks are 0..1 after the dead zone.
   gamepad: {
     deadzone: 0.18,

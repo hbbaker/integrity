@@ -36,6 +36,9 @@ export class GameMode {
   /** The inventory screen may be opened in this mode. */
   get allowsInventory() { return true; }
 
+  /** The game steps its own player, and what the player holds, on every fixed step. A mode that moves the player itself answers false. */
+  get stepsPlayer() { return true; }
+
   /** Can the player take the game back after the mouse was released? (`player` is the local player.) */
   canResume(player) { return !this.resultsShowing && (player.alive || this.respawns); }
 
@@ -58,6 +61,12 @@ export class GameMode {
 
   /** update(dt, frame): once per rendered frame. `frame` is { playing, boardHeld }. */
   update() {}
+
+  /** look(dx, dy): the player moved the view (mouse or stick). Return true if the mode used it, so the game's own view does not turn. */
+  look() { return false; }
+
+  /** applyCamera(alpha, dt): once per rendered frame, before the picture is drawn. Return true if the mode placed the camera itself. */
+  applyCamera() { return false; }
 
   /** The local player died. Return true if the mode handled it (no default game-over screen). */
   onPlayerDeath() { return false; }

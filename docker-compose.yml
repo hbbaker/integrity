@@ -1,0 +1,10 @@
+services:
+  game:
+    build: .
+    ports:
+      - "${PORT:-8123}:8123"
+    environment:
+      PORT: "8123"
+      CABLE_DEV: "${CABLE_DEV:-}"
+      DIG_MATCH_SECONDS: "${DIG_MATCH_SECONDS:-}"
+    restart: unless-stopped

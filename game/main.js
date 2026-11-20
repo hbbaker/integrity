@@ -25,12 +25,17 @@ import { WavesMode } from './modes/waves-mode.js';
 import { DeathmatchMode } from './modes/deathmatch-mode.js';
 import { BotMatchMode } from './modes/bot-match-mode.js';
 import { DigSiteMode } from './modes/dig-site-mode.js';
+import { MountainMode } from './modes/mountain-mode.js';
 import { MultiplayerMenu } from './ui/multiplayer-menu.js';
 import { Scoreboard } from './ui/scoreboard.js';
 import { DigMode } from './rules/dig-mode.js';
 import { DigHud } from './ui/dig-hud.js';
 import { DigLobbyScreen } from './ui/dig-lobby.js';
 import { BotMatch } from './rules/bot-match.js';
+import { SkiRun, RIDES } from './rules/ski-run.js';
+import { loadPhysics } from '../core/client/physics/rapier-world.js';
+import { SkiHud } from './ui/ski-hud.js';
+import { SkiMenu } from './ui/ski-menu.js';
 import { SoloMenu } from './ui/solo-menu.js';
 import { loadName } from './ui/multiplayer-menu.js';
 import { GamepadInput } from '../core/client/engine/gamepad.js';
@@ -178,7 +183,10 @@ const characterScreen = new CharacterScreen({
   },
   onResume: resumeFromCharacterScreen,
 });
-loadDevFlag().then((enabled) => characterScreen.setDevMode(enabled));
+loadDevFlag().then((enabled) => {
+  characterScreen.setDevMode(enabled);
+  skiRun.setDevMode(enabled);
+});
 
 /*
  * The suit beacon: the character screen arms a deploy (suit down) or recall (suit up) beacon and puts it in your hand;
@@ -204,6 +212,22 @@ const stats = { kills: 0 }; // bots the player has killed this run
 const DEFAULT_SETUP = {
   level: 'waves', fog: DEFAULT_FOG, spawn: { x: 0, z: 22 }, invulnerable: false, infiniteAmmo: false, infiniteReserve: false,
 };
+
+const skiRun = new SkiRun({
+  config: CONFIG.ski, playerConfig: CONFIG.player, handsIndex: CONFIG.weapons.handsIndex, menuLevel: DEFAULT_SETUP.level,
+  world, player, cyborg, weapons, camera, renderer, skiHud: new SkiHud(), loadPhysics,
+});
+const skiMenu = new SkiMenu({
+  rides: RIDES,
+  onCourse: (course, ride) => {
+    skiMenu.close();
+    startMode('mountain', { course, ride });
+  },
+  onBack: () => {
+    skiMenu.close();
+    hud.showStart(true, false);
+  },
+});
 
 /** The work every mode shares before it starts: build its level, reset the player and weapons, clear the field. */
 function prepareMode(mode) {
@@ -255,6 +279,7 @@ modes.register(new BotMatchMode({ botMatch }));
 modes.register(new DigSiteMode({
   dig, digHud, digLobby, net, remotes, hud, cyborg, renderer, leaveToLobby: () => modes.stop('lobby'),
 }));
+modes.register(new MountainMode({ skiRun, config: CONFIG.ski }));
 
 /** Start (or restart) a mode, then hand the player the controls. */
 function startMode(id, payload = null) {
@@ -376,6 +401,7 @@ const storage = (() => {
     return null;
   }
 })();
+// The storage keys keep the game's former name (cable-bots) so players keep their saved bindings and settings.
 const bindings = new Bindings(ACTIONS, { storage, storageKey: 'cable-bots-bindings', presets: PAD_PRESETS });
 const settings = new SettingsModel(SETTING_DEFS, { storage, storageKey: 'cable-bots-settings' });
 const applySettings = createSettingsApplier(CONFIG, settings);
@@ -384,7 +410,7 @@ settings.subscribe(applySettings);
 
 const input = {
   forward: false, back: false, left: false, right: false,
-  sprintHeld: false, fireHeld: false, aimHeld: false, boardHeld: false, crouchHeld: false, leanLeft: false, leanRight: false,
+  sprintHeld: false, jumpHeld: false, fireHeld: false, aimHeld: false, boardHeld: false, crouchHeld: false, leanLeft: false, leanRight: false,
   // One-shot edges: latched until a fixed step consumes them, so a press is never
   // lost on a rendered frame that happens to run zero fixed steps.
   jumpPressed: false, slidePressed: false, sprintPressed: false, firePressed: false, ammoPressed: false,
@@ -400,7 +426,7 @@ const input = {
 
   clearAll() {
     this.forward = this.back = this.left = this.right = false;
-    this.sprintHeld = this.fireHeld = this.aimHeld = this.boardHeld = this.crouchHeld = false;
+    this.sprintHeld = this.jumpHeld = this.fireHeld = this.aimHeld = this.boardHeld = this.crouchHeld = false;
     this.leanLeft = this.leanRight = false;
     this.analogActive = false;
     this.clearEdges();
@@ -474,13 +500,16 @@ const devices = new DeviceInput({
     hud.showStart(player.alive, modes.current !== null);
     return true;
   },
-  onLook: (dx, dy) => {
-    const lookY = settings.get('invertMouseY') ? -dy : dy;
-    player.look(dx, lookY);
-    weapons.addLook(dx, lookY);
-  },
+  onLook: (dx, dy) => lookAround(dx, settings.get('invertMouseY') ? -dy : dy),
 });
 devices.attach();
+
+/** The mouse or the look stick moved. A mode with its own camera takes it; otherwise the player's view turns. */
+function lookAround(dx, dy) {
+  if (modes.look(dx, dy)) return;
+  player.look(dx, dy);
+  weapons.addLook(dx, dy);
+}
 
 /** Forget every held control and latched press (focus lost, death, pointer lock changed). */
 function clearInput() {
@@ -556,10 +585,7 @@ const pad = new GamepadInput({
   actionInput,
   state: input,
   mouseSensitivity: () => CONFIG.player.mouseSensitivity, // read live: the stick's turn rate must not change with the mouse setting
-  look: (dx, dy) => {
-    player.look(dx, dy);
-    weapons.addLook(dx, dy);
-  },
+  look: lookAround,
   engage: padPrimary,
   confirm: padConfirm,
   back: padBack,
@@ -616,6 +642,11 @@ hud.el.modeSandbox.addEventListener('click', (e) => {
 hud.el.modeWaves.addEventListener('click', (e) => { e.stopPropagation(); startMode('waves'); });
 hud.el.modeMultiplayer.addEventListener('click', (e) => { e.stopPropagation(); audio.unlock(); openMultiplayer(); });
 hud.el.modeDig.addEventListener('click', (e) => { e.stopPropagation(); audio.unlock(); openDig(); });
+hud.el.modeSki.addEventListener('click', (e) => {
+  e.stopPropagation();
+  hud.showStart(false);
+  skiMenu.open();
+});
 digHud.el.again.addEventListener('click', (e) => {
   e.stopPropagation();
   if (dig.solo) startSoloDigNow(); // a solo player starts a fresh game instead of returning to a lobby
@@ -640,7 +671,7 @@ function fixedUpdate(dt) {
   modes.fixedUpdate(dt, input);
   if (input.interactPressed) mechSuit.interact();
   const stepInput = mechSuit.filterInput(modes.filterInput(input)); // a mode may block movement or keys; the suit's climb blocks all of it
-  if (player.alive) { // in some modes the world runs on while you wait to respawn, but the dead do nothing
+  if (player.alive && modes.stepsPlayer) { // in some modes the world runs on while you wait to respawn, but the dead do nothing; a mode may also move the player itself
     player.update(dt, stepInput);
     weapons.update(dt, stepInput);
   }
@@ -654,7 +685,7 @@ function fixedUpdate(dt) {
 
 function renderFrame(alpha, dt) {
   const time = loop.time;
-  player.applyCamera(alpha, dt);
+  if (!modes.applyCamera(alpha, dt)) player.applyCamera(alpha, dt);
   skyDome.position.copy(camera.position);
   camera.updateMatrixWorld(); // HUD projection and viewmodel read this frame's camera
   cyborg.update(dt, alpha, time, weapons);

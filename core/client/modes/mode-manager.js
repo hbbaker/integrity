@@ -55,6 +55,8 @@ export class ModeManager {
 
   get allowsInventory() { return this.current?.allowsInventory ?? false; }
 
+  get stepsPlayer() { return this.current?.stepsPlayer ?? true; }
+
   canResume(player) { return this.current !== null && this.current.canResume(player); }
 
   /* Event forwards. */
@@ -65,6 +67,12 @@ export class ModeManager {
   filterInput(input) { return this.current ? this.current.filterInput(input) : input; }
 
   update(dt, frame) { this.current?.update(dt, frame); }
+
+  /** Returns true if the mode used the look input. */
+  look(dx, dy) { return this.current?.look(dx, dy) ?? false; }
+
+  /** Returns true if the mode placed the camera. */
+  applyCamera(alpha, dt) { return this.current?.applyCamera(alpha, dt) ?? false; }
 
   /** Returns true if the mode handled the death. */
   onPlayerDeath() { return this.current?.onPlayerDeath() ?? false; }

@@ -210,6 +210,16 @@ export class HoldableSystem {
     this.switchTimer = this.cfg.switchTime / 2;
   }
 
+  /** Hold an item at once, with no switch animation (a mode that starts the player with a set item). */
+  equipNow(index) {
+    if (index < 0 || index >= this.slots.length) throw new Error(`no item at index ${index}`);
+    this.current?.onDeselect(this);
+    this.switching = false;
+    this.switchAmount = 0;
+    this.pendingIndex = index;
+    this._equip(index);
+  }
+
   /** An item tells the other players about something it did. A no-op in single player. */
   sendItemMessage(message) {
     if (this.onItemMessage) this.onItemMessage(message);

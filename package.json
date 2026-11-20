@@ -1,12 +1,13 @@
 {
-  "name": "cable-bots",
+  "name": "oneshot",
   "private": true,
   "type": "module",
-  "description": "The game itself has no build step and no dependencies (Three.js comes from the import map). three is here only so the headless tests can load the game modules in Node.",
+  "description": "The game itself has no build step. Its two libraries (Three.js and the Rapier physics engine) come from the import map in index.html. They are listed here, at the same versions, only so the headless tests can load the game modules in Node.",
   "scripts": {
     "test": "node tests/run-all.mjs"
   },
   "devDependencies": {
+    "@dimforge/rapier3d-compat": "0.19.3",
     "three": "0.187.0"
   }
 }

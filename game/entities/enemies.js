@@ -4,7 +4,7 @@ import { surfaceMaterial, cssColor } from '../../core/client/graphics/surfaces.j
 import { clamp } from '../../core/client/engine/math.js';
 
 /*
- * CABLE BOTS
+ * CABLE BOTS (the enemies)
  * Human-proportioned (about 1.7 m) telecom construction-crew robots: a cable-box
  * head with a glowing "12:00" clock face and antenna ears, hard hat, hi-vis vest over a long-
  * sleeved shirt, gloves, work pants and boots, with a coax coil on the belt.
