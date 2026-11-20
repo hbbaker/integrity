@@ -18,6 +18,7 @@ const FORWARD = new THREE.Vector3(0, 0, -1);
 const ZERO = new THREE.Vector3();
 const KNEE_LIMITS = [-2.5, 0.05]; // radians: a knee folds one way only (the shin goes back)
 const ELBOW_LIMITS = [-0.05, 2.6];
+const HEAVY_PARTS = ['pelvis', 'chest']; // the parts that press the snow down where they hit
 const STRAIGHT_LIMB = 1e-4; // below this, the two bones of a limb count as in one line
 
 /** The turn of a part whose length runs along `direction` and whose hinge axis is as near to `hinge` as that allows. */
@@ -153,6 +154,15 @@ export class Ragdoll {
   /** The shin of one side, to join something to its ankle: { body, anchor (the ankle in the shin's own frame) }. */
   ankleJoint(side) {
     return { body: this.parts[`shin${side}`], anchor: new THREE.Vector3(0, -this.anatomy.shinLength, 0) };
+  }
+
+  /** The heavy parts, for what they do to the snow: visit(name, position (its middle, world), radius, speed) for each. */
+  eachHeavyPart(visit) {
+    for (const name of HEAVY_PARTS) {
+      const part = this.parts[name];
+      this.physics.read(part, this._position, this._turn);
+      visit(name, this._position, this.config.radius[name], this.physics.speedOf(part));
+    }
   }
 
   /** How fast the body moves (its pelvis), in metres per second. */

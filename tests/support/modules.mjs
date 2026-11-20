@@ -110,6 +110,8 @@ export const MODULE_PATHS = {
   physics: 'core/client/physics/rapier-world.js',
   'ski-ragdoll': 'game/ski/ragdoll.js',
   'ski-crash-ground': 'game/ski/crash-ground.js',
+  'ski-snow-tracks': 'game/ski/snow-tracks.js',
+  'trail-ribbon': 'core/client/graphics/trail-ribbon.js',
   'limb-ik': 'game/assets/limb-ik.js',
   'ski-hud': 'game/ui/ski-hud.js',
   'ski-menu': 'game/ui/ski-menu.js',

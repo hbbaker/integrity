@@ -4,7 +4,8 @@ import * as THREE from 'three';
  * CRASH GROUND: the snow, trees and rocks that a crash can hit, in the physics world. A course is far too
  * big to put into the physics world whole, so this keeps a square patch of it around a point and moves the
  * patch when that point comes near its edge. The triangles are the same ones the heightfield draws and
- * the rider stands on.
+ * the rider stands on, at the height of the base ground: snow that is pressed down (tracks, craters) does not
+ * move the physics ground (docs/adr/0005).
  */
 
 const TREE_COLLIDER_HEIGHT = 4; // metres of trunk that count (a body never flies higher than that into a tree)
@@ -45,7 +46,7 @@ export class CrashGround {
     for (let row = fromRow; row <= toRow; row++) {
       for (let column = fromColumn; column <= toColumn; column++) {
         positions[next++] = field.pointX(column);
-        positions[next++] = field.heightOf(column, row);
+        positions[next++] = field.baseHeightOf(column, row);
         positions[next++] = field.pointZ(row);
       }
     }

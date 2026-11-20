@@ -319,12 +319,12 @@ export const CONFIG = {
       // wrongEdgeSlope (the sine of the tilt). 0.3 is a 30 degree slope with the ride more than 37 degrees off the fall line,
       // or a 20 degree slope with it more than 61 degrees off. On gentler slopes it never counts.
       wrongEdgeSlope: 0.3,
-      wrongEdgeGrace: 0.25, // seconds on the wrong edge before it catches, with nothing earned: enough only for a small turn
+      wrongEdgeGrace: 0.32, // seconds on the wrong edge before it catches, with nothing earned: enough only for a small turn
       // A held edge earns more grace for the next edge (see Rider._trackEdgeHold): nothing below edgeHoldMin seconds on
       // the old edge, all of wrongEdgeBonus at edgeHoldFull. Time spent flat between the edges takes the hold away again.
       edgeHoldMin: 0.3,
       edgeHoldFull: 0.9,
-      wrongEdgeBonus: 0.6, // seconds: with a full hold the grace is 0.85 s, enough for a wide turn on a steep slope
+      wrongEdgeBonus: 0.6, // seconds: with a full hold the grace is 0.92 s, enough for a wide turn on a steep slope
       // The other edge during a brake: a load, in metres of sideways travel on the leading edge.
       catchRecover: 0.08, // load that drains each second
       skidSlip: 0.8, // share of the speed that is sideways in a full brake
@@ -343,11 +343,11 @@ export const CONFIG = {
         grip: 11, // how fast sideways speed dies (per second): higher carves, lower drifts
         edgeRate: 9, // how fast the ride goes from one edge to the other (per second)
         startEdge: -1, // the edge the ride counts as being on before it has turned: -1 left, +1 right
-        catchLimit: 0.08, // brake load at which the leading edge catches: higher forgives more
-        edgeChangeTime: 0.08, // seconds the steering must be neutral between one edge and the other at speed
+        catchLimit: 0.1, // brake load at which the leading edge catches: higher forgives more
+        edgeChangeTime: 0.06, // seconds the steering must be neutral between one edge and the other at speed
       },
       // Surfier: wider turns, slower from edge to edge. toeEdge: the side the toes are on (+1 right: a regular stance). It starts heelside.
-      board: { maxLateralAccel: 12.5, maxTurnRate: 2.3, grip: 8, edgeRate: 6.5, startEdge: -1, toeEdge: 1, catchLimit: 0.1, edgeChangeTime: 0.1 },
+      board: { maxLateralAccel: 12.5, maxTurnRate: 2.3, grip: 8, edgeRate: 6.5, startEdge: -1, toeEdge: 1, catchLimit: 0.13, edgeChangeTime: 0.075 },
     },
     // Style points (see game/ski/tricks.js) and the flick that starts a spin or a flip (core/client/engine/flick-detector.js).
     tricks: {
@@ -510,6 +510,48 @@ export const CONFIG = {
         friction: 0.6,
         halfCells: 28, // the physics ground is a square this many grid cells each way from the body ...
         marginCells: 8, // ... rebuilt around the body when it comes this near the edge
+      },
+    },
+    // What the ride and a fallen body do to the snow (see game/ski/snow-tracks.js). Lengths are in metres.
+    snow: {
+      tracks: {
+        pieces: 6000, // pieces of ribbon that each line of a track holds: the oldest go first
+        spacing: 0.35, // between two points of a track
+        lift: 0.03, // a track lies this far over the snow, so it shows
+        color: 0x8fa3bd,
+        opacity: 0.55,
+        halfWidth: { skis: 0.05, board: 0.14 }, // half of what one ski, or the board, presses flat ...
+        edgeHalfWidth: 0.025, // ... on its edge in a full carve ...
+        skidHalfWidth: 0.45, // ... and across its path in a full brake
+        boardEdgeShift: 0.8, // share of a board's half width that its track moves toward the edge in a full carve
+      },
+      clearance: 1.5, // the snow goes down only this far from the rider (plus the radius), so the ride never tilts on its own fresh track
+      // Snow pressed down: `depth` at the least, `hardDepth` at the most. A radius below 0.75 can miss every point of a 1 m grid.
+      trough: { radius: 1.1, depth: 0.03, hardDepth: 0.07 }, // along a track; the most in a full carve or brake
+      dent: { radius: 1.3, depth: 0.05, hardDepth: 0.22 }, // a landing; the most at the crash limit
+      crater: {
+        radius: 1.2, depth: 0.06, hardDepth: 0.2, // a fallen body; the most at fullSpeed ...
+        fullSpeed: 12, // ... m/s
+        spacing: 0.5, // a sliding body presses again after this far
+        contact: 0.35, // a body part this near the snow you see touches it (the physics ground is the base ground, over a crater)
+      },
+      spray: {
+        minSpeed: 4, // m/s: slower than this nothing sprays ...
+        fullSpeed: 22, // ... and from here it sprays in full
+        rate: 90, // particles per second in a full brake at full speed
+        carveShare: 0.7, // a full carve sprays this share of a full brake
+        carry: 0.45, // share of the rider's speed that the spray keeps
+        throw: 0.22, // share of the rider's speed that throws it away from the edge
+        up: [1.2, 3.2], // m/s upward
+        jitter: 1.2, // m/s of spread
+        size: [0.04, 0.1],
+        life: 0.5, // seconds
+        gravity: 9,
+        spin: 10,
+        color: 0xffffff,
+        landCount: [6, 26], // particles in the puff of a soft landing .. one at the crash limit
+        landSpeed: [2.5, 6], // m/s
+        craterCount: 14, // particles when a body hits at full speed
       },
     },
     // The shadow map follows the rider (the sun's shadows are static in the other modes).

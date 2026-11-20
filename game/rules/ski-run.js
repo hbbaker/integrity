@@ -4,6 +4,7 @@ import { ChaseCamera } from '../ski/chase-camera.js';
 import { Rider } from '../ski/rider.js';
 import { RiderBody, CRASH_LAYERS } from '../ski/rider-body.js';
 import { CrashGround } from '../ski/crash-ground.js';
+import { SnowTracks } from '../ski/snow-tracks.js';
 import { FREERIDE_COURSE } from '../ski/course-freeride.js';
 import { pickGrab, scoreAir } from '../ski/tricks.js';
 import { judgeLanding, LANDING_RATINGS } from '../ski/landing.js';
@@ -25,6 +26,7 @@ import { lerp } from '../../core/client/engine/math.js';
  * is a grab. A landed trick gives style points; a landing the wrong way up or sideways is a crash.
  * Height in the air is gravity load: too much at the landing is a crash too, unless a press of jump just
  * before the snow (the stomp) takes it away. Tricks make the stomp stronger and its window wider.
+ * The ride, a landing and a fallen body all mark the snow (see game/ski/snow-tracks.js).
  * Developer mode: the weapon slot keys jump the rider to the course's markers.
  */
 
@@ -42,10 +44,11 @@ export class SkiRun {
    *   config (CONFIG.ski), playerConfig (CONFIG.player), handsIndex (the item that is "nothing in hand"),
    *   menuLevel (the level that stands behind the menu when a run is left),
    *   world, player, cyborg, weapons, camera, renderer, skiHud,
-   *   loadPhysics() (resolves to { createWorld(gravity) }; see core/client/physics/rapier-world.js)
+   *   loadPhysics() (resolves to { createWorld(gravity) }; see core/client/physics/rapier-world.js),
+   *   particles (a ParticlePool for the snow spray; leave it out and there is no spray)
    * }
    */
-  constructor({ config, playerConfig, handsIndex, menuLevel, world, player, cyborg, weapons, camera, renderer, skiHud, loadPhysics }) {
+  constructor({ config, playerConfig, handsIndex, menuLevel, world, player, cyborg, weapons, camera, renderer, skiHud, loadPhysics, particles = null }) {
     this.config = config;
     this.playerConfig = playerConfig;
     this.handsIndex = handsIndex;
@@ -57,6 +60,8 @@ export class SkiRun {
     this.camera = camera;
     this.renderer = renderer;
     this.skiHud = skiHud;
+    this.particles = particles;
+    this.snow = null;
     this.course = null; // set while a run is on
     this.scene = null;
     this.chase = null;
@@ -87,6 +92,7 @@ export class SkiRun {
     this.flicks = new FlickDetector(config.tricks.flick);
     this.style = 0; // style points of this run
     this.bannerTime = 0; // seconds the trick banner stays up
+    this._pressSnow = (part, position, radius, speed) => this.snow.pressBody(part, position, radius, speed);
   }
 
   get active() {
@@ -124,6 +130,11 @@ export class SkiRun {
     this.body = new RiderBody({
       cyborg: this.cyborg, rider: this.rider, ride: rideId, config: config.pose, crashConfig: config.crash,
       pushSpeed: config.rider.pushSpeed, heightfield: field, worldGroup: this.scene.group,
+    });
+    this.snow = new SnowTracks({
+      heightfield: field, terrain: this.scene.terrain, group: this.scene.group, config: config.snow, ride: rideId,
+      lines: [...new Set(Object.values(config.pose[rideId].feet).map((foot) => foot.x))], // one line under each ski; a board's feet are both on its middle
+      particles: this.particles,
     });
     this.chase = new ChaseCamera({
       camera, config: config.camera,
@@ -163,6 +174,8 @@ export class SkiRun {
     this.crash = null;
     this.skiHud.setAlert(null);
     this.body.dispose();
+    this.snow.dispose();
+    this.snow = null;
     this.ground?.dispose();
     this.physics?.dispose();
     this.ground = null;
@@ -180,6 +193,7 @@ export class SkiRun {
     this.crash = null;
     this.skiHud.setAlert(null);
     this.body.recover();
+    this.snow.reset(); // before the rider is placed: it stands on the fresh snow
     this.rider.reset(point, this.course.start.yaw);
     this.body.reset();
     this.time = 0;
@@ -264,6 +278,7 @@ export class SkiRun {
     if (flick) rider.flick(flick.x * flick.strength, flick.y * flick.strength); // right spins right; down (a pull back) is a back flip
     rider.step(dt, this.finished ? FINISH_CONTROLS : this._readControls(input));
     this._movePlayer();
+    this.snow.ride(dt, rider);
     if (rider.caught !== 0) this._startCrash(rider.caught);
     else if (rider.landed) this._judgeLanding(rider.landed);
 
@@ -286,6 +301,7 @@ export class SkiRun {
       return;
     }
     this.body.absorb(verdict.share);
+    this.snow.land(this.rider.pos, verdict.share);
     const stomped = verdict.rating === LANDING_RATINGS.STOMPED;
     const sketchy = verdict.rating === LANDING_RATINGS.SKETCHY;
     if (sketchy) this.rider.vel.multiplyScalar(rules.sketchyKeep);
@@ -304,6 +320,7 @@ export class SkiRun {
     const { rider, config } = this;
     this.crash = { time: 0, still: 0, heading: rider.travelYaw };
     this.skiHud.setAlert('CRASH');
+    this.snow.fall();
     if (!this.physicsFactory) return; // no physics library: the rider stays where it is until it gets up
     if (!this.physics) {
       this.physics = this.physicsFactory.createWorld(config.rider.gravity);
@@ -321,6 +338,7 @@ export class SkiRun {
     let stopped = true;
     if (body.down) {
       this.physics.step(dt);
+      body.eachDownPart(this._pressSnow);
       const at = body.downPosition;
       this.ground.follow(at.x, at.z);
       player.prevPos.copy(player.pos);
@@ -389,6 +407,7 @@ export class SkiRun {
     this.skiHud.setLoad(inAir ? this.rider.air.load / this.config.landing.crashLimit : null, inAir && this.rider.air.stompAt !== null);
     if (!this.crash) this.skiHud.setAlert(this.rider.catchShare >= this.config.rider.catchWarn ? 'EDGE!' : null);
     if (!this.finished) this.skiHud.setTime(this.time);
+    this.snow.update();
     this._followSun(false);
   }
 

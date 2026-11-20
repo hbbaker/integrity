@@ -6,9 +6,12 @@
  * Columns run along +X from minX, rows along +Z from minZ. Each cell is two triangles, split along the
  * diagonal between its (column + 1, row) and (column, row + 1) corners. heightAt() reads those same
  * triangles, so a mesh drawn from the grid and a body that stands on it agree exactly.
+ *
+ * The ground can be pressed down (stamp): `heights` is then the pressed surface, and `pressed` holds how far
+ * each grid point went down from the base ground it was filled with.
  */
 
-import { clamp } from './math.js';
+import { clamp, smoothstep } from './math.js';
 
 export class Heightfield {
   /** @param grid { minX, minZ, cell (metres), columns, rows (whole numbers of cells) } */
@@ -24,6 +27,8 @@ export class Heightfield {
     this.rows = rows;
     this.stride = columns + 1; // grid points in one row
     this.heights = new Float32Array(this.stride * (rows + 1));
+    this.pressed = new Float32Array(this.heights.length); // metres each grid point is pressed down
+    this.baseHeights = new Map(); // grid point (its place in `heights`) -> its base height, for each point that is pressed down
   }
 
   get maxX() { return this.minX + this.columns * this.cell; }
@@ -39,14 +44,55 @@ export class Heightfield {
   /** The height stored at one grid point. */
   heightOf(column, row) { return this.heights[row * this.stride + column]; }
 
-  /** Set every grid height from `height(x, z)`. */
+  /** The height of the base ground at one grid point: what it was before anything pressed it down. */
+  baseHeightOf(column, row) {
+    const index = row * this.stride + column;
+    return this.baseHeights.get(index) ?? this.heights[index];
+  }
+
+  /** Set every grid height from `height(x, z)`. Nothing is pressed down after it. */
   fill(height) {
+    this.pressed.fill(0);
+    this.baseHeights.clear();
     for (let row = 0; row <= this.rows; row++) {
       const z = this.pointZ(row);
       for (let column = 0; column <= this.columns; column++) {
         this.heights[row * this.stride + column] = height(this.pointX(column), z);
       }
     }
+  }
+
+  /**
+   * Press the ground down around (x, z): by `depth` metres at the middle, less toward `radius`, nothing beyond it.
+   * A point that is already pressed deeper stays as it is, so many stamps in one place do not dig a hole.
+   * Returns true when a grid point moved.
+   */
+  stamp(x, z, radius, depth) {
+    const fromColumn = Math.max(0, Math.ceil((x - radius - this.minX) / this.cell));
+    const toColumn = Math.min(this.columns, Math.floor((x + radius - this.minX) / this.cell));
+    const fromRow = Math.max(0, Math.ceil((z - radius - this.minZ) / this.cell));
+    const toRow = Math.min(this.rows, Math.floor((z + radius - this.minZ) / this.cell));
+    let moved = false;
+    for (let row = fromRow; row <= toRow; row++) {
+      for (let column = fromColumn; column <= toColumn; column++) {
+        const distance = Math.hypot(this.pointX(column) - x, this.pointZ(row) - z);
+        const wanted = depth * (1 - smoothstep(0, radius, distance));
+        const index = row * this.stride + column;
+        if (wanted <= this.pressed[index]) continue;
+        if (!this.baseHeights.has(index)) this.baseHeights.set(index, this.heights[index]);
+        this.heights[index] = this.baseHeights.get(index) - wanted;
+        this.pressed[index] = wanted;
+        moved = true;
+      }
+    }
+    return moved;
+  }
+
+  /** Bring all pressed ground back up to the base ground. */
+  liftPressed() {
+    for (const [index, height] of this.baseHeights) this.heights[index] = height;
+    this.baseHeights.clear();
+    this.pressed.fill(0);
   }
 
   /** Ground height at (x, z). A point outside the grid gets the height of the nearest edge. */

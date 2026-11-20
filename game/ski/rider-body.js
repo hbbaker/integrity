@@ -215,6 +215,11 @@ export class RiderBody {
     return this.ragdoll.speed;
   }
 
+  /** The heavy parts of the fallen body: visit(name, position, radius, speed) for each (see Ragdoll.eachHeavyPart). */
+  eachDownPart(visit) {
+    this.ragdoll.eachHeavyPart(visit);
+  }
+
   /** The body, and what came off it, where the physics has them this frame. */
   _poseRagdoll(cyborg) {
     const pose = this.ragdoll.read();

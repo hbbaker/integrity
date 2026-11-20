@@ -47,7 +47,7 @@ game/    OneShot itself
   weapons/       one file per weapon (numbers, class and model together), plus shared.js and index.js
   assets/        procedural models: the robot and the dig site's objects
   world/         level builders
-  ski/           the mountain mode: courses, the rider and its pose solver, the ride models, the chase camera, crashes (ragdoll)
+  ski/           the mountain mode: courses, the rider and its pose solver, the ride models, the chase camera, crashes (ragdoll), snow tracks and spray
   ui/            HUD, menus, settings screen, on-screen keyboard, the action table
   server/        the Rust game server: DIG SITE on the core's GameServer
 tests/   node tests/run-all.mjs   (headless; the server tests start the release server)

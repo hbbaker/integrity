@@ -215,7 +215,7 @@ const DEFAULT_SETUP = {
 
 const skiRun = new SkiRun({
   config: CONFIG.ski, playerConfig: CONFIG.player, handsIndex: CONFIG.weapons.handsIndex, menuLevel: DEFAULT_SETUP.level,
-  world, player, cyborg, weapons, camera, renderer, skiHud: new SkiHud(), loadPhysics,
+  world, player, cyborg, weapons, camera, renderer, skiHud: new SkiHud(), loadPhysics, particles: fx.particles,
 });
 const skiMenu = new SkiMenu({
   rides: RIDES,
